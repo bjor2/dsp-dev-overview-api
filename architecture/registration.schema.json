@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsp-dev-overview/registration.schema.json",
+  "title": "DSP Dev Overview registration",
+  "type": "object",
+  "required": ["id", "project", "env", "generatedAt", "sources", "apps", "entities", "edges", "observability"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9-]+\\.(dev)$"},
+    "project": {"type": "string"},
+    "env": {"enum": ["dev"]},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "sources": {"type": "array", "items": {"type": "object", "required": ["kind", "path"], "properties": {"kind": {"enum": ["terraform", "trigger-scan", "local-config", "run-script", "sample-kit"]}, "path": {"type": "string"}, "commit": {"type": "string"}}}},
+    "apps": {"type": "array", "items": {"type": "object", "required": ["id", "name", "kind"], "properties": {
+      "id": {"type": "string"}, "name": {"type": "string"},
+      "kind": {"enum": ["web", "func", "func-ingress"]},
+      "azureResource": {"type": "string"}, "cloudRoleName": {"type": "string"},
+      "local": {"type": "object", "properties": {"port": {"type": "integer"}, "runScript": {"type": "string"}, "url": {"type": "string"}}},
+      "triggers": {"type": "array", "items": {"type": "object", "required": ["function", "entityId"], "properties": {"function": {"type": "string"}, "entityId": {"type": "string"}, "setting": {"type": "string"}, "connection": {"type": "string"}, "sourceFile": {"type": "string"}}}}
+    }}},
+    "entities": {"type": "array", "items": {"type": "object", "required": ["id", "kind", "localName"], "properties": {
+      "id": {"type": "string"}, "kind": {"enum": ["queue", "topic", "subscription"]},
+      "localName": {"type": "string"}, "cloudName": {"type": ["string", "null"]},
+      "topic": {"type": "string"}, "forwardTo": {"type": "string"}, "sqlFilter": {"type": "string"},
+      "owner": {"enum": ["project", "shared"]}, "scope": {"enum": ["local", "cloud", "both"]},
+      "maxDeliveryCount": {"type": "integer"}
+    }}},
+    "edges": {"type": "array", "items": {"type": "object", "required": ["from", "to", "kind"], "properties": {
+      "from": {"type": "string"}, "to": {"type": "string"},
+      "kind": {"enum": ["trigger", "publish", "subscription", "forward", "inject"]},
+      "label": {"type": "string"}, "scope": {"enum": ["local", "cloud", "both"]},
+      "confidence": {"enum": ["code", "terraform", "inferred-from-settings", "manual"]}
+    }}},
+    "observability": {"type": "object", "properties": {
+      "appInsights": {"type": "object", "properties": {"resource": {"type": "string"}, "resourceGroup": {"type": "string"}, "subscription": {"type": "string"}}},
+      "traceIt": {"type": "object", "properties": {"url": {"type": "string"}, "status": {"type": "string"}}}
+    }},
+    "samples": {"type": "object", "properties": {"catalog": {"type": "string"}, "source": {"type": "string"}}},
+    "overrides": {"type": "object"}
+  }
+}

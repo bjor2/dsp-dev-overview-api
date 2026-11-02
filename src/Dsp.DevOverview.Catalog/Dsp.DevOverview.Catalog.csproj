@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Sample catalog model + message builder. Multi-targeted so tools/CatalogGenerator (net8.0, same runtime as the
+       seed kit) can verify the builder byte-for-byte against the real contract types. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>

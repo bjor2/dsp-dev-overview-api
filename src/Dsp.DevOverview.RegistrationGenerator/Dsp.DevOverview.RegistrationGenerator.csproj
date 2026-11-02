@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Slice 6 (ADR-002): builds a registration record from read-only Terraform, ServiceBusTrigger scans and local-dev
+       files. Shared by tools/Generate-Registration (CLI) and the API (POST /registration/refresh), so both emit the
+       same record. Never writes outside the output path it is given. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" Version="9.6.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Dsp.DevOverview.RegistrationGenerator.Tests" />
+  </ItemGroup>
+</Project>
