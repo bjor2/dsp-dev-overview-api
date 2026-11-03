@@ -50,6 +50,7 @@ public sealed class OverviewService(ProjectStore store, SbGateway sb, OverviewOp
     public async Task<IReadOnlyList<EntityStatus>> EntitiesAsync(string id, CancellationToken ct)
     {
         var p = Project(id);
+        if (options.ServiceBus.AuthMode == SbAuthMode.None) throw SbGateway.NotConfigured(options.ServiceBus);
         var entities = ActiveEntities(p).ToList();
         var probe = entities.FirstOrDefault(e => e.Kind == "queue");
         if (probe is null || !await sb.IsReachableAsync(probe, p.Registration, ct))
