@@ -54,21 +54,43 @@ public sealed record SbHealth(bool Reachable, long? DlqTotal);
 /// </summary>
 public static class SbEntityReader
 {
-    public static async Task<IReadOnlyList<EntityStatus>> ReadAsync(SbGateway sb, OverviewOptions options, OverviewProject p, CancellationToken ct)
+    public static Task<IReadOnlyList<EntityStatus>> ReadAsync(SbGateway sb, OverviewOptions options, OverviewProject p, CancellationToken ct) =>
+        ReadAsync(sb.IsReachableAsync, sb.GetCountsAsync, sb.Log, options, p, ct);
+
+    /// <summary>Seam for tests. Every failure is logged at Warning (exception type, first message line, entity name), then rethrown.</summary>
+    public static async Task<IReadOnlyList<EntityStatus>> ReadAsync(
+        Func<RegisteredEntity, ProjectRegistration, CancellationToken, Task<bool>> isReachable,
+        Func<RegisteredEntity, ProjectRegistration, CancellationToken, Task<EntityCounts>> counts,
+        ILogger log, OverviewOptions options, OverviewProject p, CancellationToken ct)
     {
         var entities = OverviewService.ActiveEntities(p, options.ServiceBus.Scope).ToList();
         var probe = entities.FirstOrDefault(e => e.Kind == "queue");
-        if (probe is null || !await sb.IsReachableAsync(probe, p.Registration, ct))
-            throw new ApiException(StatusCodes.Status503ServiceUnavailable, "SB_UNREACHABLE", options.ServiceBus.UnreachableMessage, retryable: true);
-        var result = new List<EntityStatus>();
-        foreach (var e in entities)
+        var current = probe;
+        try
         {
-            var c = await sb.GetCountsAsync(e, p.Registration, ct);
-            result.Add(new EntityStatus(e.Id, e.Kind, options.ServiceBus.EntityName(e), c.Active, c.DeadLetter,
-                DlqHot: c.DeadLetter is > 0, Owner: e.Owner ?? "project", ParentEntityId: e.Kind == "subscription" ? e.Topic : null));
+            if (probe is null || !await isReachable(probe, p.Registration, ct))
+                throw new ApiException(StatusCodes.Status503ServiceUnavailable, "SB_UNREACHABLE", options.ServiceBus.UnreachableMessage, retryable: true);
+            var result = new List<EntityStatus>();
+            foreach (var e in entities)
+            {
+                current = e;
+                var c = await counts(e, p.Registration, ct);
+                result.Add(new EntityStatus(e.Id, e.Kind, options.ServiceBus.EntityName(e), c.Active, c.DeadLetter,
+                    DlqHot: c.DeadLetter is > 0, Owner: e.Owner ?? "project", ParentEntityId: e.Kind == "subscription" ? e.Topic : null));
+            }
+            return result;
         }
-        return result;
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            log.LogWarning("SB entities read failed for {Project} at entity {Entity}: {ExceptionType}{Code}: {Message}",
+                p.Id, current is null ? "(no queue registered)" : options.ServiceBus.EntityName(current), ex.GetType().Name,
+                ex is ApiException a ? $" {a.Code}" : "", ShortMessage(ex.Message));
+            throw;
+        }
     }
+
+    // First line, capped; SB SDK messages carry no credentials (connection strings never appear in them).
+    internal static string ShortMessage(string m) { var l = m.Split('\n')[0].Trim(); return l.Length > 200 ? l[..200] + "…" : l; }
 
     /// <summary>Same sum the UI makes from /sb/entities (and Flow): DLQ counts of entities that report one.</summary>
     public static long DlqTotal(IEnumerable<EntityStatus> entities) => entities.Sum(e => e.DeadLetterCount ?? 0);

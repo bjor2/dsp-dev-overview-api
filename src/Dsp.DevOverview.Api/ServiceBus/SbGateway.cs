@@ -56,6 +56,9 @@ public sealed class SbGateway : IAsyncDisposable
 
     public ServiceBusOptions Options => _options;
 
+    /// <summary>Shared logger (SbEntityReader logs read failures through it).</summary>
+    public ILogger Log => _log;
+
     /// <summary>Overridable for tests; created lazily only in credential mode.</summary>
     public Azure.Core.TokenCredential Credential { get => _credential ??= new Azure.Identity.DefaultAzureCredential(); set => _credential = value; }
     private Azure.Core.TokenCredential? _credential;
