@@ -35,7 +35,12 @@ builder.Services.AddSingleton<FlowService>();
 builder.Services.AddAppInsightsLogs(options.AppInsights);
 // Slice 7: GET /api/projects health from live signals (console process manager + ports, SB probe, AI probe).
 // Option (b): Overview:ServiceBus:ProxyUpstream set = SB endpoints + sbReachable come from that upstream Overview API.
-builder.Services.AddHttpClient(SbProxy.HttpClientName, c => c.Timeout = Timeout.InfiniteTimeSpan); // per-request timeout in SbProxy
+builder.Services.AddHttpClient(SbProxy.HttpClientName, c =>
+{
+    c.Timeout = Timeout.InfiniteTimeSpan; // per-request timeout in SbProxy
+    // The upstream Overview API is behind the same front-door check (ADDENDA-007).
+    if (builder.Configuration[FrontdoorSecret.CurrentVar] is { Length: > 0 } fd) c.DefaultRequestHeaders.TryAddWithoutValidation(FrontdoorSecret.Header, fd);
+});
 if (options.ServiceBus.ProxyEnabled) builder.Services.AddSingleton<ISbHealthProbe, UpstreamSbHealthProbe>();
 else builder.Services.AddSingleton<ISbHealthProbe, CachedSbHealthProbe>();
 builder.Services.AddSingleton(sp => new ProjectHealthService(sp.GetRequiredService<ProjectStore>(), sp.GetRequiredService<ISbHealthProbe>(),
@@ -43,14 +48,14 @@ builder.Services.AddSingleton(sp => new ProjectHealthService(sp.GetRequiredServi
 builder.Services.AddSingleton(sp => new RegistrationRefreshService(sp.GetRequiredService<ProjectStore>(), options, root,
     sp.GetRequiredService<OverviewService>(), sp.GetRequiredService<ILogger<RegistrationRefreshService>>()));
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173").AllowAnyHeader().AllowAnyMethod()));
+// No CORS (ADDENDA-007): the SPA only calls same-origin /api via the web proxy / Vite dev proxy.
 
 var app = builder.Build();
 
 // Fail at startup (not on first request) if a registration is schema-invalid.
 app.Services.GetRequiredService<ProjectStore>();
 
-app.UseCors();
+app.UseFrontdoorSecret(); // ADDENDA-007: before everything except /healthz
 app.Use(async (ctx, next) =>
 {
     try { await next(); }

@@ -1,6 +1,6 @@
 # DSP Dev Overview — Slices 1–7 (registration + Service Bus browse/inject, DLQ list/retry/discard, Flow, Console, App Insights logs, registration generator, health + TraceIt link)
 
-ASP.NET Core Minimal API (.NET 10) on `http://127.0.0.1:5090`, anonymous, against the shared-stack Service Bus emulator.
+ASP.NET Core Minimal API (.NET 10) on `http://127.0.0.1:5090`, behind the front-door secret (ADDENDA-007, see below), against the shared-stack Service Bus emulator.
 Design docs: `architecture/` (ADR-000, ADR-003, ADR-004, ADR-005, HANDOFF-*, ADDENDA-001, ADDENDUM-ui-wireframe-q). UI lives in `ui/app` (UI/UX).
 
 ## Layout
@@ -435,6 +435,31 @@ ADDENDA-001 / HANDOFF set (9 `Tenant*` bools with only `TenantOptimera=true`, + 
 - [ ] `scripts/demo-dlq.sh` needs the Ingress app stopped: a running consumer (`console/app:ingress/start`) takes the marked
       messages before `DlqForcer` can dead-letter them (seen 2026-11-02; passes with `console/app:ingress/stop` first).
 
+## Service Bus host: emulator vs Bjor's Azure local namespace (ADDENDA-004)
+
+Default (`appsettings.Development.json`) stays on the shared-stack **emulator** (connection string with `UseDevelopmentEmulator=true`).
+
+To point the API at the personal Azure namespace `sb-bjoo-local-noe-dahl-shared.servicebus.windows.net`
+(host kind `developer-local-azure`), use **DefaultAzureCredential** (e.g. `az login` as bjor.byrkjedal@osilion.no) — no SAS keys in the repo:
+
+```bash
+az login            # identity needs Service Bus Data Owner/Sender+Receiver on the namespace
+export Overview__ServiceBus__ConnectionString=""          # empty = credential mode (connection string always wins)
+export Overview__ServiceBus__FullyQualifiedNamespace=sb-bjoo-local-noe-dahl-shared.servicebus.windows.net
+export Overview__ServiceBus__Scope=Local
+dotnet run --project src/Dsp.DevOverview.Api --urls http://localhost:5090
+```
+
+Host kind is detected from the host name:
+
+| Host kind | Detect | Entity names | inject / DLQ retry / discard | purge |
+|---|---|---|---|---|
+| emulator | `UseDevelopmentEmulator=true` | registration `localName` | allowed | allowed (confirm) |
+| developer-local-azure | `sb-{dev}-local-noe-dahl-shared.servicebus.windows.net` | `sbq-{dev}-local-noe-dahl-shared-{localName}` / `sbt-…` (subscriptions keep `localName`) | allowed | allowed (confirm) |
+| cloud-dev | anything else (e.g. 870 shared) | registration `cloudName` | 403 `CLOUD_WRITE_FORBIDDEN` | 403 `PURGE_CLOUD_FORBIDDEN` |
+
+Emulator-only entities (`customerproject-topic-inspect`, `local-inspect`) may be absent on Azure; peek/depth soft-fail per entity.
+
 ## Render hosting and Service Bus (ADDENDA-005)
 
 On Render (`RENDER` env var or `Overview__Hosting=Render`) SB errors describe the cloud API's Service Bus config, never the local shared stack.
@@ -450,3 +475,13 @@ samples/send, purge) to `{upstream}/api/...` (status + body passed through, 30 s
 upstream yet (an OAuth-gated ngrok host would block it).
 
 `GET /healthz` → `ok` (Render health check / keepalive).
+
+## Front-door secret (ADDENDA-007 layer 1)
+Every API route except `/healthz` requires header `X-Frontdoor-Secret` equal to `FRONTDOOR_SHARED_SECRET` or
+`FRONTDOOR_SHARED_SECRET_NEXT` (rotation). Neither set → 503 `FRONTDOOR_NOT_CONFIGURED`; wrong/missing → 401. No local bypass, no CORS.
+- Local: `(umask 077; openssl rand -base64 48 > ~/.dsp-overview-frontdoor-secret)` once. `scripts/run-api.sh` and the demo
+  scripts source `scripts/frontdoor-env.sh` (loads the file, wraps `curl` to send the header). The Vite dev proxy reads the
+  same env var/file and adds the header server-side. Manual curl: `curl -K <(printf 'header = "X-Frontdoor-Secret: %s"\n' "$(cat ~/.dsp-overview-frontdoor-secret)") …`
+- Render: same value in `FRONTDOOR_SHARED_SECRET` on the API and the web front door (which injects it only after the OIDC session check).
+- `Overview:ServiceBus:ProxyUpstream` calls send this API's `FRONTDOOR_SHARED_SECRET`, so the upstream must accept the same value.
+- Rotation: set `_NEXT` on the API → switch the web's value → move it into the API's `FRONTDOOR_SHARED_SECRET`, clear `_NEXT`.
