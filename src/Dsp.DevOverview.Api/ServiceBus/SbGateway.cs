@@ -14,7 +14,7 @@ public static class PurgePolicy
     /// <summary>Purge = receive-and-delete; allowed only against the local emulator (ADR-005, HANDOFF deltas).</summary>
     public static void EnsureAllowed(ServiceBusOptions options)
     {
-        if (options.Scope != SbScope.Local || !options.IsEmulator)
+        if (options.Scope != SbScope.Local || !options.IsSandbox)
             throw new ApiException(StatusCodes.Status403Forbidden, "PURGE_CLOUD_FORBIDDEN",
                 "Purge is only allowed against the local Service Bus emulator (UseDevelopmentEmulator=true, scope=local).");
     }
@@ -22,7 +22,7 @@ public static class PurgePolicy
     /// <summary>No cloud writes in v1: inject/send and DLQ retry/discard also require the emulator.</summary>
     public static void EnsureWritable(ServiceBusOptions options, string what = "Sending")
     {
-        if (options.Scope != SbScope.Local || !options.IsEmulator)
+        if (options.Scope != SbScope.Local || !options.IsSandbox)
             throw new ApiException(StatusCodes.Status403Forbidden, "CLOUD_WRITE_FORBIDDEN",
                 $"{what} is only allowed against the local Service Bus emulator; cloud writes need Bjor's explicit OK (ADR-005).");
     }
@@ -50,22 +50,47 @@ public sealed class SbGateway : IAsyncDisposable
     {
         _options = options;
         _log = log;
-        _client = new(() => new ServiceBusClient(RequireConnectionString(), new ServiceBusClientOptions
-        {
-            RetryOptions = new ServiceBusRetryOptions { MaxRetries = 1, TryTimeout = TimeSpan.FromSeconds(10) },
-        }));
+        _client = new(() => CreateClient(_options, Credential));
         _admin = new(CreateAdmin);
     }
 
     public ServiceBusOptions Options => _options;
 
-    private string RequireConnectionString() => string.IsNullOrWhiteSpace(_options.ConnectionString)
-        ? throw new ApiException(StatusCodes.Status503ServiceUnavailable, "SB_NOT_CONFIGURED", "Overview:ServiceBus:ConnectionString is empty (set it in appsettings.Development.json).")
-        : _options.ConnectionString;
+    /// <summary>Overridable for tests; created lazily only in credential mode.</summary>
+    public Azure.Core.TokenCredential Credential { get => _credential ??= new Azure.Identity.DefaultAzureCredential(); set => _credential = value; }
+    private Azure.Core.TokenCredential? _credential;
+
+    private static ServiceBusClientOptions ClientOptions(ServiceBusOptions o) => new()
+    {
+        TransportType = o.EffectiveTransport,
+        RetryOptions = new ServiceBusRetryOptions { MaxRetries = 1, TryTimeout = TimeSpan.FromSeconds(10) },
+    };
+
+    /// <summary>Connection string wins; else FullyQualifiedNamespace + credential; else 503 SB_NOT_CONFIGURED.</summary>
+    public static ServiceBusClient CreateClient(ServiceBusOptions options, Azure.Core.TokenCredential credential) => options.AuthMode switch
+    {
+        SbAuthMode.ConnectionString => new ServiceBusClient(options.ConnectionString, ClientOptions(options)),
+        SbAuthMode.Credential => new ServiceBusClient(options.NormalizedNamespace, credential, ClientOptions(options)),
+        _ => throw NotConfigured(options),
+    };
+
+    public static ApiException NotConfigured(ServiceBusOptions options) =>
+        new(StatusCodes.Status503ServiceUnavailable, "SB_NOT_CONFIGURED", options.NotConfiguredMessage);
+
+    private string RequireConnectionString() => string.IsNullOrWhiteSpace(_options.ConnectionString) ? throw NotConfigured(_options) : _options.ConnectionString;
+
+    private string Name(RegisteredEntity e) => _options.EntityName(e);
 
     private ServiceBusAdministrationClient? CreateAdmin()
     {
         var cs = _options.AdminConnectionString;
+        if (string.IsNullOrWhiteSpace(cs) && _options.AuthMode == SbAuthMode.Credential)
+        {
+            var o = new ServiceBusAdministrationClientOptions();
+            o.Retry.MaxRetries = 0;
+            o.Retry.NetworkTimeout = TimeSpan.FromSeconds(5);
+            return new ServiceBusAdministrationClient(_options.NormalizedNamespace, Credential, o);
+        }
         if (string.IsNullOrWhiteSpace(cs) && _options.IsEmulator)
             cs = System.Text.RegularExpressions.Regex.Replace(RequireConnectionString(), @"Endpoint=sb://([^;/:]+)/?;",
                 $"Endpoint=sb://$1:{_options.EmulatorAdminPort};", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -96,7 +121,7 @@ public sealed class SbGateway : IAsyncDisposable
             {
                 if (entity.Kind == "queue")
                 {
-                    var p = (await admin.GetQueueRuntimePropertiesAsync(entity.LocalName, ct)).Value;
+                    var p = (await admin.GetQueueRuntimePropertiesAsync(Name(entity), ct)).Value;
                     return new(p.ActiveMessageCount, p.DeadLetterMessageCount, "admin");
                 }
                 var (topic, sub) = SubscriptionPath(entity, registration);
@@ -128,6 +153,7 @@ public sealed class SbGateway : IAsyncDisposable
             }
             return count;
         }
+        catch (Exception ex) when (IsAuthFailure(ex)) { throw AuthFailed(ex); }
         catch (Exception ex) when (IsUnreachable(ex)) { throw Unreachable(ex); }
         catch (InvalidOperationException ex) when (IsAutoForwarding(ex))
         {
@@ -148,6 +174,11 @@ public sealed class SbGateway : IAsyncDisposable
             await using var receiver = CreateReceiver(probe, registration, SubQueue.None, ServiceBusReceiveMode.PeekLock);
             await receiver.PeekMessageAsync(cancellationToken: ct);
             return true;
+        }
+        catch (Exception ex) when (IsAuthFailure(ex))
+        {
+            _log.LogWarning("Service Bus probe auth failed: {Message}", FirstLine(ex.Message));
+            throw AuthFailed(ex);
         }
         catch (Exception ex)
         {
@@ -174,6 +205,7 @@ public sealed class SbGateway : IAsyncDisposable
             await using var receiver = CreateReceiver(entity, registration, subQueue, ServiceBusReceiveMode.PeekLock);
             return await receiver.PeekMessagesAsync(max, cancellationToken: ct);
         }
+        catch (Exception ex) when (IsAuthFailure(ex)) { throw AuthFailed(ex); }
         catch (Exception ex) when (IsUnreachable(ex)) { throw Unreachable(ex); }
         catch (InvalidOperationException ex) when (IsAutoForwarding(ex))
         {
@@ -182,7 +214,7 @@ public sealed class SbGateway : IAsyncDisposable
         }
         catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessagingEntityNotFound)
         {
-            throw new ApiException(StatusCodes.Status404NotFound, "ENTITY_NOT_FOUND", $"{entity.LocalName} not found on the emulator: {FirstLine(ex.Message)}");
+            throw new ApiException(StatusCodes.Status404NotFound, "ENTITY_NOT_FOUND", $"{Name(entity)} not found on the Service Bus namespace: {FirstLine(ex.Message)}");
         }
     }
 
@@ -247,7 +279,7 @@ public sealed class SbGateway : IAsyncDisposable
         try
         {
             await using var receiver = CreateReceiver(entity, registration, SubQueue.DeadLetter, ServiceBusReceiveMode.PeekLock);
-            var sender = resendTo is null ? null : Sender(resendTo.LocalName);
+            var sender = resendTo is null ? null : Sender(Name(resendTo));
             var locked = new HashSet<ServiceBusReceivedMessage>();
             try
             {
@@ -289,10 +321,11 @@ public sealed class SbGateway : IAsyncDisposable
                 }
             }
         }
+        catch (Exception ex) when (IsAuthFailure(ex)) { throw AuthFailed(ex); }
         catch (Exception ex) when (IsUnreachable(ex)) { throw Unreachable(ex); }
         catch (ServiceBusException ex) when (ex.Reason == ServiceBusFailureReason.MessagingEntityNotFound)
         {
-            throw new ApiException(StatusCodes.Status404NotFound, "ENTITY_NOT_FOUND", $"{entity.LocalName} not found on the emulator: {FirstLine(ex.Message)}");
+            throw new ApiException(StatusCodes.Status404NotFound, "ENTITY_NOT_FOUND", $"{Name(entity)} not found on the Service Bus namespace: {FirstLine(ex.Message)}");
         }
         _log.LogInformation("DLQ {Action} on {Entity}: {Settled} settled, {NotFound} not found", resendTo is null ? "discard" : $"retry to {resendTo.Id}",
             entity.Id, settled.Count, pending.Count);
@@ -325,13 +358,14 @@ public sealed class SbGateway : IAsyncDisposable
             // One by one, in catalog order, like the kit (the rename/stale/duplicate sequence depends on order).
             foreach (var m in messages)
             {
-                var name = targets[m.TargetEntityId].LocalName;
+                var name = Name(targets[m.TargetEntityId]);
                 await Sender(name).SendMessageAsync(ToServiceBusMessage(m), ct);
                 sent[m.TargetEntityId] = sent.GetValueOrDefault(m.TargetEntityId) + 1;
             }
         }
+        catch (Exception ex) when (IsAuthFailure(ex)) { throw AuthFailed(ex); }
         catch (Exception ex) when (IsUnreachable(ex)) { throw Unreachable(ex); }
-        return sent.Select(kv => new SentToEntity(kv.Key, targets[kv.Key].LocalName, kv.Value)).ToList();
+        return sent.Select(kv => new SentToEntity(kv.Key, Name(targets[kv.Key]), kv.Value)).ToList();
     }
 
     public static ServiceBusMessage ToServiceBusMessage(BuiltMessage m)
@@ -376,10 +410,11 @@ public sealed class SbGateway : IAsyncDisposable
                             if (batch.Count == 0) break;
                             removed += batch.Count;
                         }
-                    results.Add(new PurgedEntity(id, entity.LocalName, subQueue == SubQueue.DeadLetter, removed));
+                    results.Add(new PurgedEntity(id, Name(entity), subQueue == SubQueue.DeadLetter, removed));
                 }
             }
         }
+        catch (Exception ex) when (IsAuthFailure(ex)) { throw AuthFailed(ex); }
         catch (Exception ex) when (IsUnreachable(ex)) { throw Unreachable(ex); }
         return new PurgeResult(results.Sum(r => r.Removed), results);
     }
@@ -396,13 +431,13 @@ public sealed class SbGateway : IAsyncDisposable
             var (topic, sub) = SubscriptionPath(entity, registration);
             return _client.Value.CreateReceiver(topic, sub, options);
         }
-        return _client.Value.CreateReceiver(entity.LocalName, options);
+        return _client.Value.CreateReceiver(Name(entity), options);
     }
 
-    private static (string Topic, string Subscription) SubscriptionPath(RegisteredEntity entity, ProjectRegistration registration)
+    private (string Topic, string Subscription) SubscriptionPath(RegisteredEntity entity, ProjectRegistration registration)
     {
         var topic = entity.Topic is null ? null : registration.FindEntity(entity.Topic);
-        return (topic?.LocalName ?? throw new InvalidDataException($"Subscription {entity.Id} has no resolvable topic"), entity.LocalName);
+        return (topic is null ? throw new InvalidDataException($"Subscription {entity.Id} has no resolvable topic") : Name(topic), Name(entity));
     }
 
     private static bool IsAutoForwarding(Exception ex) => ex.Message.Contains("auto-forwarding", StringComparison.OrdinalIgnoreCase);
@@ -415,8 +450,21 @@ public sealed class SbGateway : IAsyncDisposable
         _ => ex.InnerException is not null && IsUnreachable(ex.InnerException),
     };
 
-    private static ApiException Unreachable(Exception ex) =>
-        new(StatusCodes.Status503ServiceUnavailable, "SB_UNREACHABLE", $"Service Bus emulator unreachable: {FirstLine(ex.Message)}", retryable: true);
+    /// <summary>Credential / authorization failures (AAD token, 401/403, missing RBAC): SB_AUTH_FAILED, distinct from SB_UNREACHABLE.</summary>
+    public static bool IsAuthFailure(Exception ex) => ex switch
+    {
+        Azure.Identity.AuthenticationFailedException or Azure.Identity.CredentialUnavailableException or UnauthorizedAccessException => true,
+        Azure.RequestFailedException { Status: 401 or 403 } => true,
+        ServiceBusException sb when sb.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase)
+            || sb.Message.Contains("401", StringComparison.Ordinal) || sb.Message.Contains("403", StringComparison.Ordinal) => true,
+        _ => ex.InnerException is not null && IsAuthFailure(ex.InnerException),
+    };
+
+    public ApiException AuthFailed(Exception ex) => new(StatusCodes.Status503ServiceUnavailable, "SB_AUTH_FAILED",
+        $"{_options.AuthFailedMessage} ({FirstLine(ex.Message)})", retryable: false);
+
+    private ApiException Unreachable(Exception ex) => new(StatusCodes.Status503ServiceUnavailable, "SB_UNREACHABLE",
+        _options.HostedOnRender ? $"{_options.UnreachableMessage} ({FirstLine(ex.Message)})" : $"Service Bus unreachable: {FirstLine(ex.Message)}", retryable: true);
 
     private static string FirstLine(string s) => s.Split('\n')[0].Trim();
 

@@ -434,3 +434,19 @@ ADDENDA-001 / HANDOFF set (9 `Tenant*` bools with only `TenantOptimera=true`, + 
       before they can be generated; TF-only generation is not implemented.
 - [ ] `scripts/demo-dlq.sh` needs the Ingress app stopped: a running consumer (`console/app:ingress/start`) takes the marked
       messages before `DlqForcer` can dead-letter them (seen 2026-11-02; passes with `console/app:ingress/stop` first).
+
+## Render hosting and Service Bus (ADDENDA-005)
+
+On Render (`RENDER` env var or `Overview__Hosting=Render`) SB errors describe the cloud API's Service Bus config, never the local shared stack.
+Error codes: `SB_NOT_CONFIGURED` (no namespace/credential), `SB_AUTH_FAILED` (credential rejected / missing RBAC, 401/403), `SB_UNREACHABLE` (network).
+
+Option (a), chosen: service principal + `DefaultAzureCredential` (→ `EnvironmentCredential`) over AmqpWebSockets/443. Render env vars:
+`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (secret env only), `Overview__ServiceBus__FullyQualifiedNamespace=sb-bjoo-local-noe-dahl-shared.servicebus.windows.net`;
+leave `Overview__ServiceBus__ConnectionString` empty. SP/role commands: `architecture/RUNBOOK-render-sb-sp.md` (not run; needs Bjor's OK).
+
+Option (b), off by default: `Overview__ServiceBus__ProxyUpstream=https://<box-api>` forwards SB endpoints (entities, peek, dlq list/retry/discard,
+samples/send, purge) to `{upstream}/api/...` (status + body passed through, 30 s timeout `Overview__ServiceBus__ProxyTimeoutSeconds`,
+`SB_PROXY_UNREACHABLE`/`SB_PROXY_TIMEOUT` on failure); health `sbReachable` comes from the upstream `/api/projects`. No auth header to the
+upstream yet (an OAuth-gated ngrok host would block it).
+
+`GET /healthz` → `ok` (Render health check / keepalive).

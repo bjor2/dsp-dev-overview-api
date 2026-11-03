@@ -17,6 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 var options = builder.Configuration.GetSection("Overview").Get<OverviewOptions>() ?? new OverviewOptions();
 var root = options.ResolveRoot(builder.Environment.ContentRootPath);
 
+options.ServiceBus.HostedOnRender = OverviewOptions.DetectRender(options.Hosting, Environment.GetEnvironmentVariable("RENDER"));
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton(options.ServiceBus);
 builder.Services.AddSingleton(sp => ProjectStore.Load(options, root, sp.GetRequiredService<ILoggerFactory>().CreateLogger("Registration")));
@@ -33,7 +34,10 @@ builder.Services.AddSingleton<IConsoleStatusProvider>(sp => sp.GetRequiredServic
 builder.Services.AddSingleton<FlowService>();
 builder.Services.AddAppInsightsLogs(options.AppInsights);
 // Slice 7: GET /api/projects health from live signals (console process manager + ports, SB probe, AI probe).
-builder.Services.AddSingleton<ISbHealthProbe, CachedSbHealthProbe>();
+// Option (b): Overview:ServiceBus:ProxyUpstream set = SB endpoints + sbReachable come from that upstream Overview API.
+builder.Services.AddHttpClient(SbProxy.HttpClientName, c => c.Timeout = Timeout.InfiniteTimeSpan); // per-request timeout in SbProxy
+if (options.ServiceBus.ProxyEnabled) builder.Services.AddSingleton<ISbHealthProbe, UpstreamSbHealthProbe>();
+else builder.Services.AddSingleton<ISbHealthProbe, CachedSbHealthProbe>();
 builder.Services.AddSingleton(sp => new ProjectHealthService(sp.GetRequiredService<ProjectStore>(), sp.GetRequiredService<ISbHealthProbe>(),
     sp.GetService<IAiQueryProbe>(), sp.GetRequiredService<IConsoleStatusProvider>(), sp.GetRequiredService<IPortProbe>(), options));
 builder.Services.AddSingleton(sp => new RegistrationRefreshService(sp.GetRequiredService<ProjectStore>(), options, root,
@@ -62,6 +66,9 @@ app.Use(async (ctx, next) =>
     }
 });
 
+app.UseSbProxy(options.ServiceBus);
+
+// Render health check / keepalive target.
 app.MapGet("/healthz", () => Results.Text("ok"));
 
 var api = app.MapGroup("/api");

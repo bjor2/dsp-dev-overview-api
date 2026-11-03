@@ -74,14 +74,15 @@ public sealed class CachedSbHealthProbe(SbGateway sb, OverviewOptions options, T
     {
         var entities = OverviewService.ActiveEntities(p, options.ServiceBus.Scope).ToList();
         var probe = entities.FirstOrDefault(e => e.Kind == "queue");
-        if (probe is null || !await sb.IsReachableAsync(probe, p.Registration, ct)) return new(false, 0);
+        try { if (probe is null || !await sb.IsReachableAsync(probe, p.Registration, ct)) return new(false, 0); }
+        catch (ApiException ex) when (ex.Code == "SB_AUTH_FAILED") { return new(false, 0); }
         var dlqTotal = 0L;
         try
         {
             foreach (var e in entities)
                 dlqTotal += (await sb.GetCountsAsync(e, p.Registration, ct)).DeadLetter ?? 0;
         }
-        catch (ApiException ex) when (ex.Code == "SB_UNREACHABLE") { return new(false, 0); } // went away mid-probe
+        catch (ApiException ex) when (ex.Code is "SB_UNREACHABLE" or "SB_AUTH_FAILED") { return new(false, 0); } // went away mid-probe
         return new(true, dlqTotal);
     }
 }

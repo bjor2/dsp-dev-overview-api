@@ -43,9 +43,16 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
         var entities = overview.ActiveEntities(p).Where(e => FlowGraphBuilder.IsVisible(e.Scope, view) && e.Kind != "topic").ToList();
         var probe = entities.FirstOrDefault(e => e.Kind == "queue");
         if (probe is null) return result;
-        if (!await sb.IsReachableAsync(probe, p.Registration, ct))
+        bool reachable;
+        try { reachable = await sb.IsReachableAsync(probe, p.Registration, ct); }
+        catch (ApiException ex) when (ex.Code == "SB_AUTH_FAILED")
         {
-            warnings.Add("SB_UNREACHABLE: Service Bus unreachable, depths are null (is the shared stack up? pwsh /workspace/dsp/shared-stack/Test-DspStack.ps1).");
+            warnings.Add($"SB_AUTH_FAILED: {ex.Message} Depths are null.");
+            return result;
+        }
+        if (!reachable)
+        {
+            warnings.Add($"SB_UNREACHABLE: {options.ServiceBus.UnreachableMessage} Depths are null.");
             return result;
         }
         foreach (var e in entities)

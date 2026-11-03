@@ -53,13 +53,13 @@ public sealed class OverviewService(ProjectStore store, SbGateway sb, OverviewOp
         var entities = ActiveEntities(p).ToList();
         var probe = entities.FirstOrDefault(e => e.Kind == "queue");
         if (probe is null || !await sb.IsReachableAsync(probe, p.Registration, ct))
-            throw new ApiException(StatusCodes.Status503ServiceUnavailable, "SB_UNREACHABLE", "Service Bus emulator unreachable (is the shared stack up? pwsh /workspace/dsp/shared-stack/Test-DspStack.ps1).", retryable: true);
+            throw new ApiException(StatusCodes.Status503ServiceUnavailable, "SB_UNREACHABLE", options.ServiceBus.UnreachableMessage, retryable: true);
 
         var result = new List<EntityStatus>();
         foreach (var e in entities)
         {
             var c = await sb.GetCountsAsync(e, p.Registration, ct);
-            result.Add(new EntityStatus(e.Id, e.Kind, e.LocalName, c.Active, c.DeadLetter,
+            result.Add(new EntityStatus(e.Id, e.Kind, options.ServiceBus.EntityName(e), c.Active, c.DeadLetter,
                 DlqHot: c.DeadLetter is > 0, Owner: e.Owner ?? "project", ParentEntityId: e.Kind == "subscription" ? e.Topic : null));
         }
         return result;

@@ -15,6 +15,11 @@ public sealed class OverviewOptions
     /// <summary>Overview-owned state (flow positions), relative to the root unless absolute. Never inside service repos.</summary>
     public string DataDir { get; set; } = "data";
     public string? CommandPropertyProfile { get; set; }
+    /// <summary>"Render" when the API runs on Render (also auto-detected from the RENDER env var Render sets). Only changes error copy.</summary>
+    public string? Hosting { get; set; }
+
+    public static bool DetectRender(string? hosting, string? renderEnv) =>
+        string.Equals(hosting, "Render", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(renderEnv);
     /// <summary>Slice 4 console (process manager, ring buffer, SSE). Log files go to {DataDir}/{Console.LogDir}.</summary>
     public ConsoleOptions Console { get; set; } = new();
     /// <summary>Slice 5 App Insights query (ADR-004). Target comes from the registration unless overridden here.</summary>
@@ -53,8 +58,103 @@ public sealed class ServiceBusOptions
 
     public bool AdminCountsEnabled => UseAdminCounts ?? !IsEmulator;
 
-    public bool IsEmulator => ConnectionString.Contains("UseDevelopmentEmulator=true", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// e.g. sb-bjoo-local-noe-dahl-shared.servicebus.windows.net. When set (and ConnectionString empty) the clients use
+    /// DefaultAzureCredential (az login / VS / env / managed identity) instead of a SAS connection string.
+    /// </summary>
+    public string? FullyQualifiedNamespace { get; set; }
+
+    /// <summary>AmqpTcp | AmqpWebSockets. Null = auto: AmqpTcp for the emulator, AmqpWebSockets (443) otherwise (box blocks 5671).</summary>
+    public Azure.Messaging.ServiceBus.ServiceBusTransportType? TransportType { get; set; }
+
+    public Azure.Messaging.ServiceBus.ServiceBusTransportType EffectiveTransport => TransportType
+        ?? (IsEmulator ? Azure.Messaging.ServiceBus.ServiceBusTransportType.AmqpTcp : Azure.Messaging.ServiceBus.ServiceBusTransportType.AmqpWebSockets);
+
+    /// <summary>Set at startup from Overview:Hosting / RENDER. On Render, SB errors point at the cloud API's SB config, not the shared stack.</summary>
+    public bool HostedOnRender { get; set; }
+
+    /// <summary>
+    /// Option (b): base URL of another Overview API (e.g. the box API behind ngrok). When set, the SB endpoints (entities, peek,
+    /// dlq list/retry/discard, samples/send, purge) are forwarded to {ProxyUpstream}/api/... and health sbReachable comes from
+    /// its /api/projects. Off (empty) by default.
+    /// </summary>
+    public string? ProxyUpstream { get; set; }
+    public int ProxyTimeoutSeconds { get; set; } = 30;
+    public bool ProxyEnabled => !string.IsNullOrWhiteSpace(ProxyUpstream);
+
+    public const string RenderNotConfiguredMessage =
+        "Render-hosted Overview API has no Service Bus credential configured; set AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET + " +
+        "Overview__ServiceBus__FullyQualifiedNamespace, or enable SB proxy to box API (Overview__ServiceBus__ProxyUpstream). " +
+        "This is the cloud API's Service Bus config, not the local shared stack.";
+
+    public string NotConfiguredMessage => HostedOnRender ? RenderNotConfiguredMessage
+        : "Set Overview:ServiceBus:ConnectionString or Overview:ServiceBus:FullyQualifiedNamespace (see README).";
+
+    /// <summary>SB_AUTH_FAILED text: the credential was rejected or lacks RBAC on the namespace (host-aware).</summary>
+    public string AuthFailedMessage => HostedOnRender
+        ? $"Render-hosted Overview API: Service Bus credential rejected for {HostName ?? "(unknown)"}. Check the cloud API's AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET " +
+          "(service principal, secret not expired) and its Azure Service Bus Data Owner role on the namespace (ADDENDA-005, RUNBOOK-render-sb-sp.md)."
+        : AuthMode == SbAuthMode.ConnectionString
+        ? $"Service Bus rejected the connection string credential for {HostName ?? "(unknown)"}."
+        : $"Service Bus credential rejected for {HostName ?? "(unknown)"}: check az login (DefaultAzureCredential) and Azure Service Bus Data Owner/Sender/Receiver RBAC on the namespace.";
+
+    /// <summary>Host-kind aware SB_UNREACHABLE text (no "emulator" wording for Azure namespaces; cloud-API wording on Render).</summary>
+    public string UnreachableMessage =>
+        HostedOnRender && AuthMode == SbAuthMode.None ? RenderNotConfiguredMessage
+        : HostedOnRender ? $"Render-hosted Overview API cannot reach Service Bus namespace {HostName ?? "(unknown)"} ({HostKind}, {EffectiveTransport}). " +
+            "Check the cloud API's Service Bus config (Overview__ServiceBus__FullyQualifiedNamespace, AmqpWebSockets/443 egress). " +
+            "Not a local shared-stack problem."
+        : AuthMode == SbAuthMode.None ? NotConfiguredMessage
+        : HostKind == SbHostKind.Emulator
+        ? "Service Bus emulator unreachable (is the shared stack up? pwsh /workspace/dsp/shared-stack/Test-DspStack.ps1)."
+        : $"Service Bus namespace {HostName ?? "(unknown)"} unreachable ({HostKind}, {EffectiveTransport}); check az login / RBAC / network.";
+
+    public SbAuthMode AuthMode =>
+        !string.IsNullOrWhiteSpace(ConnectionString) ? SbAuthMode.ConnectionString
+        : !string.IsNullOrWhiteSpace(FullyQualifiedNamespace) ? SbAuthMode.Credential
+        : SbAuthMode.None;
+
+    /// <summary>Normalised FQNS (strips sb:// and trailing slash).</summary>
+    public string? NormalizedNamespace => FullyQualifiedNamespace?.Trim().Replace("sb://", "", StringComparison.OrdinalIgnoreCase).TrimEnd('/');
+
+    public bool IsEmulator => AuthMode == SbAuthMode.ConnectionString
+        && ConnectionString.Contains("UseDevelopmentEmulator=true", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly System.Text.RegularExpressions.Regex DevLocal =
+        new(@"^sb-(?<dev>[a-z0-9]+)-local-noe-dahl-shared\.servicebus\.windows\.net$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private string? HostName => AuthMode == SbAuthMode.Credential ? NormalizedNamespace
+        : System.Text.RegularExpressions.Regex.Match(ConnectionString, @"Endpoint=sb://([^;/:]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } m ? m.Groups[1].Value : null;
+
+    /// <summary>ADDENDA-004 host kind: emulator | developer-local-azure (sb-{dev}-local-noe-dahl-shared) | cloud-dev.</summary>
+    public SbHostKind HostKind => IsEmulator ? SbHostKind.Emulator
+        : HostName is { } h && DevLocal.IsMatch(h) ? SbHostKind.DeveloperLocalAzure
+        : SbHostKind.CloudDev;
+
+    public string? DeveloperName => HostName is { } h && DevLocal.Match(h) is { Success: true } m ? m.Groups["dev"].Value.ToLowerInvariant() : null;
+
+    /// <summary>Emulator + developer-local-azure are personal sandboxes: inject / DLQ retry / discard / purge (confirm) allowed.</summary>
+    public bool IsSandbox => HostKind != SbHostKind.CloudDev;
+
+    /// <summary>Kept for tests: which registration name family applies.</summary>
+    public SbScope EntityNameScope => HostKind == SbHostKind.CloudDev ? SbScope.Cloud : SbScope.Local;
+
+    /// <summary>Entity name on this host: emulator=localName; dev-local=sbq/sbt-{dev}-local-noe-dahl-shared-{localName}; cloud-dev=cloudName.</summary>
+    public string EntityName(Registration.RegisteredEntity e) => HostKind switch
+    {
+        SbHostKind.Emulator => e.LocalName,
+        SbHostKind.DeveloperLocalAzure => e.Kind switch
+        {
+            "queue" => $"sbq-{DeveloperName}-local-noe-dahl-shared-{e.LocalName}",
+            "topic" => $"sbt-{DeveloperName}-local-noe-dahl-shared-{e.LocalName}",
+            _ => e.LocalName, // subscription names are scoped under the (derived) topic
+        },
+        _ => e.CloudName ?? e.LocalName,
+    };
 }
+
+public enum SbAuthMode { None, ConnectionString, Credential }
+public enum SbHostKind { Emulator, DeveloperLocalAzure, CloudDev }
 
 /// <summary>A registered project: the Architect registration plus its mirrored sample catalog.</summary>
 public sealed record OverviewProject(ProjectRegistration Registration, SampleCatalog? Catalog, string? CatalogPath, string? CatalogError)

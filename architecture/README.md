@@ -19,3 +19,6 @@ Read-only inputs: terraform `870-brodrene-dahl-dsp/dev/eu-west/unprovisioned_app
 | ADDENDA-003-dlqHot.md | dlqHot = deadLetterCount > 0 only |
 | ADR-006-render-entra-front-door.md | Render Web Service Node OIDC gateway, Entra single-tenant, assignment-only Bjor; Static Site/MSAL SPA rejected |
 | HANDOFF-developer-render-entra.md | Entra app fields, redirect URIs, Render env/build/health, Tester checks |
+| ADDENDA-004-bjoo-local-servicebus.md | Bjor Azure-local SB host: names + local mutate policy |
+| ADDENDA-005-render-api-servicebus-auth.md | Render API → SB via dedicated Osilion SP (Data Owner on single namespace); commands pending Bjor OK |
+| ADDENDA-006-ngrok-oauth-box-ingress.md | ngrok ingress: only Api :5011; OAuth+email human host, jwt-validation machine host |

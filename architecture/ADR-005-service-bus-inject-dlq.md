@@ -32,3 +32,6 @@ The overview reproduces the message shape (body + Subject + application properti
 - Commands (**kit contract**, ADDENDA-002): prefer spawn seed-messages kit, or reproduce 2.0.1 props only. `Subject` = type name, **no ContentType**, tenant in body `{ "Tenant": "Optimera" }` (enum serialisation — confirm on first kit peek). **No `Tenant*` application properties.** App props from 2.0.1: `Dsp_IsM3Cloud`, `DataSource="M3Cloud"`, `Dsp_ShardingBucketNumber`, `Dsp_CorrelationContextId`. Do **not** require `Dsp_OriginalEnqueuedTime` (2.0.2+). Optional `Overview:CommandPropertyProfile=addenda` for experiments only.
 - Purge list (kit): customerproject-ingress, -snapshot, -domain, customerproject, communication, customerproject-topic-inspect (main + DLQ).
 - **Cloud MaxDeliveryCount = 3** (TF default for queues and subs); local emulator = 10. DLQ "hot" threshold must use the per-scope value.
+
+## Host kinds (see ADDENDA-004)
+Emulator and `sb-*-local-noe-dahl-shared` (developer Azure local) allow inject/DLQ; shared cloud DEV (`870`) stays peek-only unless explicitly approved. Entity **names** differ per host — do not use emulator short names against the bjoo Azure namespace.
