@@ -88,7 +88,7 @@ public sealed class UpstreamSbHealthProbe(IHttpClientFactory factory, OverviewOp
     public async Task<SbHealth> ProbeAsync(OverviewProject project, CancellationToken ct)
     {
         var all = await AllAsync(ct);
-        return all.GetValueOrDefault(project.Id, new SbHealth(false, 0));
+        return all.GetValueOrDefault(project.Id, new SbHealth(false, null));
     }
 
     private async Task<Dictionary<string, SbHealth>> AllAsync(CancellationToken ct)
@@ -137,8 +137,8 @@ public sealed class UpstreamSbHealthProbe(IHttpClientFactory factory, OverviewOp
         {
             if (!p.TryGetProperty("id", out var id) || id.GetString() is not { } key) continue;
             var reachable = p.TryGetProperty("healthDetail", out var d) && d.TryGetProperty("sbReachable", out var r) && r.ValueKind == JsonValueKind.True;
-            var dlq = p.TryGetProperty("dlqTotal", out var t) && t.TryGetInt64(out var n) ? n : 0;
-            result[key] = new SbHealth(reachable, reachable ? dlq : 0);
+            long? dlq = p.TryGetProperty("dlqTotal", out var t) && t.TryGetInt64(out var n) ? n : null;
+            result[key] = new SbHealth(reachable, reachable ? dlq : null);
         }
         return result;
     }

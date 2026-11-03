@@ -20,7 +20,7 @@ public sealed record HealthDetail(int AppsUp, int AppsTotal, bool SbReachable, b
 
 public sealed record ProjectSummary(
     string Id, string Project, string Env, string Health, HealthDetail HealthDetail,
-    int AppCount, int QueueCount, int DlqTotal, string RegistrationGeneratedAt,
+    int AppCount, int QueueCount, int? DlqTotal, string RegistrationGeneratedAt,
     // Slice 7: TraceIt link only (ADR-004); null when not configured.
     string? TraceItUrl = null);
 

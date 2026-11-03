@@ -44,14 +44,42 @@ public static class HealthRules
 }
 
 /// <summary>Service Bus side of a project's health: reachable, and the DLQ total over its active entities when reachable.</summary>
-public sealed record SbHealth(bool Reachable, long DlqTotal);
+/// <summary>DlqTotal is null when unknown (SB unreachable, auth failed, not configured, probe threw); never a fake 0.</summary>
+public sealed record SbHealth(bool Reachable, long? DlqTotal);
+
+/// <summary>
+/// The one Service Bus read behind GET /sb/entities AND /api/projects dlqTotal: active entities, reachability probe on
+/// the first queue, then per-entity counts with the host's entity-name resolution (ServiceBusOptions.EntityName).
+/// Throws ApiException SB_UNREACHABLE / SB_AUTH_FAILED.
+/// </summary>
+public static class SbEntityReader
+{
+    public static async Task<IReadOnlyList<EntityStatus>> ReadAsync(SbGateway sb, OverviewOptions options, OverviewProject p, CancellationToken ct)
+    {
+        var entities = OverviewService.ActiveEntities(p, options.ServiceBus.Scope).ToList();
+        var probe = entities.FirstOrDefault(e => e.Kind == "queue");
+        if (probe is null || !await sb.IsReachableAsync(probe, p.Registration, ct))
+            throw new ApiException(StatusCodes.Status503ServiceUnavailable, "SB_UNREACHABLE", options.ServiceBus.UnreachableMessage, retryable: true);
+        var result = new List<EntityStatus>();
+        foreach (var e in entities)
+        {
+            var c = await sb.GetCountsAsync(e, p.Registration, ct);
+            result.Add(new EntityStatus(e.Id, e.Kind, options.ServiceBus.EntityName(e), c.Active, c.DeadLetter,
+                DlqHot: c.DeadLetter is > 0, Owner: e.Owner ?? "project", ParentEntityId: e.Kind == "subscription" ? e.Topic : null));
+        }
+        return result;
+    }
+
+    /// <summary>Same sum the UI makes from /sb/entities (and Flow): DLQ counts of entities that report one.</summary>
+    public static long DlqTotal(IEnumerable<EntityStatus> entities) => entities.Sum(e => e.DeadLetterCount ?? 0);
+}
 
 public interface ISbHealthProbe
 {
     Task<SbHealth> ProbeAsync(OverviewProject project, CancellationToken ct);
 }
 
-/// <summary>Probes via <see cref="SbGateway"/> (peek one message on the first queue, then counts), cached per project for a few seconds.</summary>
+/// <summary>Reads via <see cref="SbEntityReader"/> (same as /sb/entities); successes cached per project for a few seconds, failures never.</summary>
 public sealed class CachedSbHealthProbe(SbGateway sb, OverviewOptions options, TimeProvider? clock = null) : ISbHealthProbe
 {
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -65,25 +93,24 @@ public sealed class CachedSbHealthProbe(SbGateway sb, OverviewOptions options, T
             && _clock.GetUtcNow() - hit.At < ttl)
             return hit.Result;
 
-        var result = await ProbeNowAsync(project, ct);
+        // Failures are returned as unknown and NOT cached, so a cold-start miss can't pin the list at a stale value.
+        if (await ProbeNowAsync(project, ct) is not { } result) return new(false, null);
         _cache[project.Id] = (project.Registration, _clock.GetUtcNow(), result);
         return result;
     }
 
-    private async Task<SbHealth> ProbeNowAsync(OverviewProject p, CancellationToken ct)
+    /// <summary>Overridable read (tests); defaults to <see cref="SbEntityReader"/>, i.e. exactly what /sb/entities returns.</summary>
+    public Func<OverviewProject, CancellationToken, Task<IReadOnlyList<EntityStatus>>>? Reader { get; init; }
+
+    private async Task<SbHealth?> ProbeNowAsync(OverviewProject p, CancellationToken ct)
     {
-        var entities = OverviewService.ActiveEntities(p, options.ServiceBus.Scope).ToList();
-        var probe = entities.FirstOrDefault(e => e.Kind == "queue");
-        try { if (probe is null || !await sb.IsReachableAsync(probe, p.Registration, ct)) return new(false, 0); }
-        catch (ApiException ex) when (ex.Code == "SB_AUTH_FAILED") { return new(false, 0); }
-        var dlqTotal = 0L;
+        if (options.ServiceBus.AuthMode == SbAuthMode.None) return new(false, null);
         try
         {
-            foreach (var e in entities)
-                dlqTotal += (await sb.GetCountsAsync(e, p.Registration, ct)).DeadLetter ?? 0;
+            var list = await (Reader ?? ((pp, c) => SbEntityReader.ReadAsync(sb, options, pp, c)))(p, ct);
+            return new(true, SbEntityReader.DlqTotal(list));
         }
-        catch (ApiException ex) when (ex.Code is "SB_UNREACHABLE" or "SB_AUTH_FAILED") { return new(false, 0); } // went away mid-probe
-        return new(true, dlqTotal);
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { return null; }
     }
 }
 
@@ -112,7 +139,7 @@ public sealed class ProjectHealthService(
         var detail = new HealthDetail(appsUp, r.Apps.Count, sbHealth.Reachable, aiQueryOk);
         return new ProjectSummary(r.Id, r.Project, r.Env, HealthRules.Evaluate(detail), detail,
             r.Apps.Count, OverviewService.ActiveEntities(p, options.ServiceBus.Scope).Count(e => e.Kind == "queue"),
-            (int)Math.Min(sbHealth.DlqTotal, int.MaxValue), r.GeneratedAt.ToString("yyyy-MM-ddTHH:mm:sszzz"),
+            sbHealth.DlqTotal is { } dlq ? (int)Math.Min(dlq, int.MaxValue) : null, r.GeneratedAt.ToString("yyyy-MM-ddTHH:mm:sszzz"),
             TraceItUrl(p, options));
     }
 
