@@ -74,7 +74,7 @@ public sealed class OverviewService(ProjectStore store, SbGateway sb, OverviewOp
         if (max is < 1 or > 250) throw new ApiException(StatusCodes.Status400BadRequest, "INVALID_MAX", "max must be 1..250.");
         var messages = await sb.PeekAsync(e, p.Registration, max, deadLetter ? SubQueue.DeadLetter : SubQueue.None, ct);
         var counts = await sb.GetCountsAsync(e, p.Registration, ct);
-        return new QueuePeek(e.Id, counts.Active, counts.DeadLetter, Scope.ToString().ToLowerInvariant(), e.MaxDeliveryCountFor(Scope), messages);
+        return new QueuePeek(e.Id, counts.Active, counts.DeadLetter, options.ServiceBus.HostKindLabel, e.MaxDeliveryCountFor(Scope), messages);
     }
 
     // GET /api/projects/{id}/sb/{entityId}/dlq?max=50

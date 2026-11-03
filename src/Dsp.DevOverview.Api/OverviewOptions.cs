@@ -139,14 +139,32 @@ public sealed class ServiceBusOptions
     /// <summary>Kept for tests: which registration name family applies.</summary>
     public SbScope EntityNameScope => HostKind == SbHostKind.CloudDev ? SbScope.Cloud : SbScope.Local;
 
+    private static readonly System.Text.RegularExpressions.Regex CloudShort =
+        new(@"^sb[qt]-[a-z0-9]+-[a-z]+-[a-z]+-dahl-shared-(?<short>.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// ADDENDA-004 &lt;short&gt;: taken from the cloud name (sbt-870-dev-euw-dahl-shared-customerproject → customerproject), since the
+    /// emulator localName can differ (customerproject-topic); falls back to localName for local-only entities.
+    /// </summary>
+    public static string ShortName(Registration.RegisteredEntity e) =>
+        e.CloudName is { } c && CloudShort.Match(c) is { Success: true } m ? m.Groups["short"].Value : e.LocalName;
+
+    /// <summary>Wire label for the host kind: emulator | developer-local-azure | cloud-dev.</summary>
+    public string HostKindLabel => HostKind switch
+    {
+        SbHostKind.Emulator => "emulator",
+        SbHostKind.DeveloperLocalAzure => "developer-local-azure",
+        _ => "cloud-dev",
+    };
+
     /// <summary>Entity name on this host: emulator=localName; dev-local=sbq/sbt-{dev}-local-noe-dahl-shared-{localName}; cloud-dev=cloudName.</summary>
     public string EntityName(Registration.RegisteredEntity e) => HostKind switch
     {
         SbHostKind.Emulator => e.LocalName,
         SbHostKind.DeveloperLocalAzure => e.Kind switch
         {
-            "queue" => $"sbq-{DeveloperName}-local-noe-dahl-shared-{e.LocalName}",
-            "topic" => $"sbt-{DeveloperName}-local-noe-dahl-shared-{e.LocalName}",
+            "queue" => $"sbq-{DeveloperName}-local-noe-dahl-shared-{ShortName(e)}",
+            "topic" => $"sbt-{DeveloperName}-local-noe-dahl-shared-{ShortName(e)}",
             _ => e.LocalName, // subscription names are scoped under the (derived) topic
         },
         _ => e.CloudName ?? e.LocalName,
