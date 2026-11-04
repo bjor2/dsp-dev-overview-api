@@ -57,14 +57,17 @@ public sealed record FlowNode(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowHandlerInfo? Handler = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PositionSource = null);
 
-/// <summary>Labelled box around handler nodes (layout/grouping only; edges never target it). Position absolute.</summary>
+/// <summary>Labelled box around handler nodes (layout/grouping only; edges never target it). Position absolute.
+/// <see cref="AppId"/>: the registration app a resource container represents (its single resourceRef naming a registered
+/// app, e.g. "app:functions"); always serialized, null when none.</summary>
 public sealed record FlowContainer(
     string Id, string Label, string Kind, IReadOnlyList<string> ResourceRefs,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowAppInfo? App,
     string Scope,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowPosition? Position,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowSize? Size = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PositionSource = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PositionSource = null,
+    string? AppId = null);
 
 public sealed record FlowEdge(
     string Id, string From, string To, string Kind,
@@ -151,7 +154,7 @@ public static class FlowGraphBuilder
             var app = c.Kind == "resource" && c.ResourceRefs.Count == 1 ? r.Apps.FirstOrDefault(a => a.Id == c.ResourceRefs[0]) : null;
             containers.Add(new FlowContainer(c.Id, c.Label, c.Kind, c.ResourceRefs,
                 app is null ? null : new FlowAppInfo(app.Kind, app.Local?.Port, app.CloudRoleName, Attached: attached?.Invoke(app.Id) ?? false), // overview-managed process running (slice 4)
-                c.Scope ?? "both", null));
+                c.Scope ?? "both", null, AppId: app?.Id));
         }
         var containerScope = containers.ToDictionary(c => c.Id, c => c.Scope);
 

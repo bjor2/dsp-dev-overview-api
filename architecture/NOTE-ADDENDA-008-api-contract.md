@@ -14,6 +14,7 @@ I checked the API output against the UI/UX build in `ui/app/src/pages/flow/model
   "containers": [{
     "id": "container:customerproject.func-app", "label": "Functions :7239", "kind": "resource" | "logical",
     "resourceRefs": ["app:functions"],
+    "appId": "app:functions",                   // always present: the app this container represents, or null (added Nov 4 2026)
     "app": { "appKind": "func", "port": 7239, "cloudRoleName": "func-870-…", "attached": false },  // resource containers only
     "scope": "both",
     "position": { "x": 420, "y": 80 }           // ABSOLUTE, only when stored
@@ -79,3 +80,13 @@ Render's disk is ephemeral, so runtime positions are lost on every redeploy. The
   - add `positionSource` to the types;
   - relabel "Reset layout" as "Reset to default layout";
   - offer an "Export layout" hint.
+
+## Contract change (Nov 4 2026): `containers[].appId`
+This is additive and needs no UI change. It was requested by UI/UX, to join Flow containers to the agent's `AppStatus` (ADDENDA-010, appKey `<regId>/<appId>`).
+
+- **`appId: string | null`**, always present on every container. It is the registration app id the container represents, e.g. `"app:functions"`.
+- The rule is the same one that decides `containers[].app`. It is set when the container is `kind: "resource"` and has exactly one `resourceRefs` entry that names a registered app (`apps[].id`).
+- Otherwise it is `null`: a `logical` container, more than one ref, or a ref to an unknown app.
+- Today every container of customerproject.dev (3) and price.dev (4) is a single-app resource container, so `appId` is never null for them.
+- **Agent join:** `appKey = projectId + "/" + appId` (e.g. `price.dev/app:functions`) matches `AppStatus.regId/appId` from `GET /agent/status` on the front door.
+
