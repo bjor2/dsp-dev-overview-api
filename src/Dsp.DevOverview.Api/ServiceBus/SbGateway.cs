@@ -45,6 +45,8 @@ public sealed class SbGateway : IAsyncDisposable
     private readonly Lazy<ServiceBusAdministrationClient?> _admin;
     private readonly ConcurrentDictionary<string, ServiceBusSender> _senders = new();
     private DateTime _adminUnavailableUntil = DateTime.MinValue;
+    private volatile bool _warm; // a probe has succeeded once: steady-state budget applies
+    private long _probeOkTicks;  // UTC ticks of the last successful probe
     private readonly SbCountReader _counts;
 
     public SbGateway(ServiceBusOptions options, ILogger<SbGateway> log)
@@ -117,10 +119,36 @@ public sealed class SbGateway : IAsyncDisposable
     // ---------- depth ----------
 
     /// <summary>Depth of one entity: bounded, shared for a few seconds, unknown (null) on timeout or a missing entity.</summary>
+    /// <remarks>
+    /// Source: admin | peek | n/a (topic: depths live on subscriptions / forward queues) | missing (MessagingEntityNotFound on
+    /// this namespace, ADDENDA-009; remembered for MissingEntityCacheSeconds) | none (blobContainer: never a Service Bus call).
+    /// </remarks>
     public Task<EntityCounts> GetCountsAsync(RegisteredEntity entity, ProjectRegistration registration, CancellationToken ct) =>
-        entity.Kind == "topic"
-            ? Task.FromResult(new EntityCounts(null, null, "n/a")) // depths live on subscriptions / forward queues
-            : _counts.CountsAsync($"{registration.Id}|{entity.Id}", c => ReadCountsAsync(entity, registration, c), ct);
+        !entity.IsServiceBus ? Task.FromResult(new EntityCounts(null, null, "none"))
+        : entity.Kind == "topic" ? _counts.CountsAsync($"{registration.Id}|{entity.Id}", c => TopicStateAsync(entity, registration, c), ct)
+        : _counts.CountsAsync($"{registration.Id}|{entity.Id}", c => ReadCountsAsync(entity, registration, c), ct);
+
+    /// <summary>Topics have no depth; with an admin client a budgeted existence check tells "missing" apart. Any failure = n/a.</summary>
+    private async Task<EntityCounts> TopicStateAsync(RegisteredEntity entity, ProjectRegistration registration, CancellationToken ct)
+    {
+        var key = CountKey(entity, registration, SubQueue.None);
+        if (_counts.IsKnownMissing(key)) return new(null, null, "missing");
+        var admin = _options.AdminCountsEnabled && DateTime.UtcNow >= _adminUnavailableUntil ? _admin.Value : null;
+        if (admin is null) return new(null, null, "n/a");
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(TimeSpan.FromSeconds(Math.Max(0.1, _options.CountTimeoutSeconds)));
+        try
+        {
+            if ((await admin.TopicExistsAsync(Name(entity), budget.Token).WaitAsync(budget.Token)).Value) return new(null, null, "n/a");
+            _counts.MarkMissing(key, new InvalidOperationException($"topic {Name(entity)} does not exist"));
+            return new(null, null, "missing");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _log.LogDebug("Topic existence check for {Entity} failed: {Message}", entity.Id, FirstLine(ex.Message));
+            return new(null, null, "n/a");
+        }
+    }
 
     /// <summary>Depths for many entities in parallel (<see cref="ServiceBusOptions.CountParallelism"/>), in input order.</summary>
     public Task<IReadOnlyList<EntityCounts>> GetCountsAsync(IReadOnlyList<RegisteredEntity> entities, ProjectRegistration registration, CancellationToken ct) =>
@@ -128,26 +156,35 @@ public sealed class SbGateway : IAsyncDisposable
 
     private async Task<EntityCounts> ReadCountsAsync(RegisteredEntity entity, ProjectRegistration registration, CancellationToken ct)
     {
+        var activeKey = CountKey(entity, registration, SubQueue.None);
+        var deadKey = CountKey(entity, registration, SubQueue.DeadLetter);
+        if (_counts.IsKnownMissing(activeKey)) return new(null, null, "missing");
         var admin = _options.AdminCountsEnabled && DateTime.UtcNow >= _adminUnavailableUntil ? _admin.Value : null;
         if (admin is not null)
         {
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            budget.CancelAfter(TimeSpan.FromSeconds(Math.Max(0.1, _options.CountTimeoutSeconds)));
             try
             {
                 if (entity.Kind == "queue")
                 {
-                    var p = (await admin.GetQueueRuntimePropertiesAsync(Name(entity), ct)).Value;
+                    var p = (await admin.GetQueueRuntimePropertiesAsync(Name(entity), budget.Token).WaitAsync(budget.Token)).Value;
                     return new(p.ActiveMessageCount, p.DeadLetterMessageCount, "admin");
                 }
                 var (topic, sub) = SubscriptionPath(entity, registration);
-                var s = (await admin.GetSubscriptionRuntimePropertiesAsync(topic, sub, ct)).Value;
+                var s = (await admin.GetSubscriptionRuntimePropertiesAsync(topic, sub, budget.Token).WaitAsync(budget.Token)).Value;
                 return new(s.ActiveMessageCount, s.DeadLetterMessageCount, "admin");
             }
             catch (Exception ex) when (SbCountReader.IsNotFound(ex))
             {
                 // One missing entity must not switch every other entity to (slower) peek counts.
-                _counts.MarkMissing(CountKey(entity, SubQueue.None), ex);
-                _counts.MarkMissing(CountKey(entity, SubQueue.DeadLetter), ex);
+                _counts.MarkMissing(activeKey, ex);
+                _counts.MarkMissing(deadKey, ex);
                 return new(null, null, "missing");
+            }
+            catch (Exception ex) when (IsAuthFailure(ex) && !IsAdminOnlyDenial(ex))
+            {
+                throw AuthFailed(ex);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
@@ -155,12 +192,25 @@ public sealed class SbGateway : IAsyncDisposable
                 _log.LogWarning("Admin runtime properties failed for {Entity}, falling back to peek counts: {Message}", entity.Id, FirstLine(ex.Message));
             }
         }
-        var active = _counts.CountAsync(CountKey(entity, SubQueue.None), c => PeekCountAsync(entity, registration, SubQueue.None, c), ct);
-        var dead = _counts.CountAsync(CountKey(entity, SubQueue.DeadLetter), c => PeekCountAsync(entity, registration, SubQueue.DeadLetter, c), ct);
-        return new(await active, await dead, "peek");
+        var active = _counts.CountAsync(activeKey, c => PeekCountAsync(entity, registration, SubQueue.None, c), ct);
+        var dead = _counts.CountAsync(deadKey, c => PeekCountAsync(entity, registration, SubQueue.DeadLetter, c), ct);
+        var (a, d) = (await active, await dead);
+        return _counts.IsKnownMissing(activeKey) ? new(null, null, "missing") : new(a, d, "peek");
     }
 
-    private string CountKey(RegisteredEntity entity, SubQueue subQueue) => $"{Name(entity)}|{subQueue}";
+    /// <summary>Negative-cache key: entity path on the namespace (subscriptions include their topic, so equal sub names never collide).</summary>
+    private string CountKey(RegisteredEntity entity, ProjectRegistration registration, SubQueue subQueue) =>
+        (entity.Kind == "subscription" && SubscriptionPathOrNull(entity, registration) is { } sp ? $"{sp.Topic}/Subscriptions/{sp.Subscription}" : Name(entity))
+        + "|" + subQueue;
+
+    private (string Topic, string Subscription)? SubscriptionPathOrNull(RegisteredEntity entity, ProjectRegistration registration) =>
+        entity.Topic is { } t && registration.FindEntity(t) is { } topic ? (Name(topic), Name(entity)) : null;
+
+    /// <summary>
+    /// Admin (management) calls need Manage rights; a data-plane-only role (Data Sender/Receiver) is denied there but can still
+    /// peek. Such a denial falls back to peek counts instead of failing as SB_AUTH_FAILED (the peek path reports real auth failures).
+    /// </summary>
+    private static bool IsAdminOnlyDenial(Exception ex) => ex is Azure.RequestFailedException { Status: 401 or 403 };
 
     private async Task<long?> PeekCountAsync(RegisteredEntity entity, ProjectRegistration registration, SubQueue subQueue, CancellationToken ct)
     {
@@ -198,8 +248,11 @@ public sealed class SbGateway : IAsyncDisposable
     /// <summary>Cheap reachability probe: peek one message from a queue.</summary>
     public async Task<bool> IsReachableAsync(RegisteredEntity probe, ProjectRegistration registration, CancellationToken ct)
     {
+        if (DateTime.UtcNow.Ticks - Interlocked.Read(ref _probeOkTicks) < TimeSpan.FromSeconds(Math.Max(0, _options.ProbeCacheSeconds)).Ticks)
+            return true;
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        budget.CancelAfter(TimeSpan.FromSeconds(Math.Max(0.1, _options.ProbeTimeoutSeconds)));
+        var seconds = _warm ? _options.ProbeTimeoutSeconds : Math.Max(_options.ProbeTimeoutSeconds, _options.ColdProbeTimeoutSeconds);
+        budget.CancelAfter(TimeSpan.FromSeconds(Math.Max(0.1, seconds)));
         async Task Peek(CancellationToken c)
         {
             await using var receiver = CreateReceiver(probe, registration, SubQueue.None, ServiceBusReceiveMode.PeekLock);
@@ -208,15 +261,19 @@ public sealed class SbGateway : IAsyncDisposable
         try
         {
             await Peek(budget.Token).WaitAsync(budget.Token); // link close happens in the background after a timeout
+            _warm = true;
+            Interlocked.Exchange(ref _probeOkTicks, DateTime.UtcNow.Ticks);
             return true;
         }
         catch (Exception ex) when (SbCountReader.IsNotFound(ex))
         {
-            return true; // the namespace answered; only this entity is missing
+            _warm = true;
+            Interlocked.Exchange(ref _probeOkTicks, DateTime.UtcNow.Ticks);
+            return true; // the namespace answered (token accepted, entity lookup done); only this entity is missing
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            _log.LogWarning("Service Bus probe exceeded {Seconds}s; treated as unreachable.", _options.ProbeTimeoutSeconds);
+            _log.LogWarning("Service Bus probe exceeded {Seconds}s; treated as unreachable.", seconds);
             return false;
         }
         catch (Exception ex) when (IsAuthFailure(ex))

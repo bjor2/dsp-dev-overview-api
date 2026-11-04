@@ -22,12 +22,24 @@ public sealed record ProjectSummary(
     string Id, string Project, string Env, string Health, HealthDetail HealthDetail,
     int AppCount, int QueueCount, int? DlqTotal, string RegistrationGeneratedAt,
     // Slice 7: TraceIt link only (ADR-004); null when not configured.
-    string? TraceItUrl = null);
+    string? TraceItUrl = null,
+    // ADDENDA-009: informational project notice (e.g. ENTITIES_NOT_PROVISIONED); absent when there is nothing to say.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ProjectNotice? Notice = null);
+
+/// <summary>
+/// Non-error project notice. <c>severity</c>: info | warn (never error: it must not read as a red banner).
+/// ENTITIES_NOT_PROVISIONED = the namespace answers but most of the project's SB entities are not found on it.
+/// </summary>
+public sealed record ProjectNotice(string Code, string Severity, string Message,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Missing = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Checked = null);
 
 /// <summary>ADDENDUM-ui-wireframe-q §1, field for field.</summary>
 public sealed record EntityStatus(
     string EntityId, string Kind, string Label, long? ActiveCount, long? DeadLetterCount, bool DlqHot, string Owner,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ParentEntityId);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ParentEntityId,
+    // ADDENDA-009: "missing" = MessagingEntityNotFound on this namespace (counts null, not an error). Absent otherwise.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? State = null);
 
 public record PeekedMessage(
     long SequenceNumber, string MessageId,
@@ -113,4 +125,7 @@ public sealed record SampleMessageDto(
 
 public sealed record SampleMessageCatalogDto(
     string ProjectId, string Source, string MirroredAt, DateTime ReferenceUtc, string CommandPropertyProfile,
-    IReadOnlyList<SampleProjectDto> SampleProjects, IReadOnlyList<SamplePreset> Presets, IReadOnlyList<SampleMessageDto> Messages);
+    IReadOnlyList<SampleProjectDto> SampleProjects, IReadOnlyList<SamplePreset> Presets, IReadOnlyList<SampleMessageDto> Messages,
+    // ADDENDA-009: false (with reason) when the project has no sample kit (samples.catalog = "none"); lists are then empty.
+    bool Available = true,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Reason = null);

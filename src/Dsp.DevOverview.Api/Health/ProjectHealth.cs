@@ -45,7 +45,12 @@ public static class HealthRules
 
 /// <summary>Service Bus side of a project's health: reachable, and the DLQ total over its active entities when reachable.</summary>
 /// <summary>DlqTotal is null when unknown (SB unreachable, auth failed, not configured, probe threw); never a fake 0.</summary>
-public sealed record SbHealth(bool Reachable, long? DlqTotal);
+/// <remarks>ADDENDA-009: Missing/Checked = entities reported not found / entities with a definite answer (counts or not found).</remarks>
+public sealed record SbHealth(bool Reachable, long? DlqTotal, int Missing = 0, int Checked = 0)
+{
+    /// <summary>The namespace answers but at least half of the project's checked entities are not on it.</summary>
+    public bool MostlyMissing => Reachable && Checked > 0 && Missing * 2 >= Checked;
+}
 
 /// <summary>
 /// The one Service Bus read behind GET /sb/entities AND /api/projects dlqTotal: active entities, reachability probe on
@@ -78,7 +83,8 @@ public static class SbEntityReader
                 try { counts1 = await counts(e, p.Registration, c); }
                 catch { current ??= e; throw; }
                 return new EntityStatus(e.Id, e.Kind, options.ServiceBus.EntityName(e), counts1.Active, counts1.DeadLetter,
-                    DlqHot: counts1.DeadLetter is > 0, Owner: e.Owner ?? "project", ParentEntityId: e.Kind == "subscription" ? e.Topic : null);
+                    DlqHot: counts1.DeadLetter is > 0, Owner: e.Owner ?? "project", ParentEntityId: e.Kind == "subscription" ? e.Topic : null,
+                    State: counts1.Source == "missing" ? "missing" : null);
             }, ct);
             return all;
         }
@@ -95,7 +101,20 @@ public static class SbEntityReader
     internal static string ShortMessage(string m) { var l = m.Split('\n')[0].Trim(); return l.Length > 200 ? l[..200] + "…" : l; }
 
     /// <summary>Same sum the UI makes from /sb/entities (and Flow): DLQ counts of entities that report one.</summary>
-    public static long DlqTotal(IEnumerable<EntityStatus> entities) => entities.Sum(e => e.DeadLetterCount ?? 0);
+    /// <remarks>Null when no entity reports a DLQ count (e.g. every entity missing on the namespace): unknown, never a fake 0.</remarks>
+    public static long? DlqTotal(IEnumerable<EntityStatus> entities)
+    {
+        var known = entities.Where(e => e.DeadLetterCount is not null).ToList();
+        return known.Count == 0 ? null : known.Sum(e => e.DeadLetterCount!.Value);
+    }
+
+    /// <summary>(missing, checked): entities not found vs entities with a definite answer (counts or not found; topics n/a excluded).</summary>
+    public static (int Missing, int Checked) Provisioning(IEnumerable<EntityStatus> entities)
+    {
+        var list = entities.ToList();
+        var missing = list.Count(e => e.State == "missing");
+        return (missing, missing + list.Count(e => e.ActiveCount is not null || e.DeadLetterCount is not null));
+    }
 }
 
 public interface ISbHealthProbe
@@ -132,7 +151,8 @@ public sealed class CachedSbHealthProbe(SbGateway sb, OverviewOptions options, T
         try
         {
             var list = await (Reader ?? ((pp, c) => SbEntityReader.ReadAsync(sb, options, pp, c)))(p, ct);
-            return new(true, SbEntityReader.DlqTotal(list));
+            var (missing, checkedCount) = SbEntityReader.Provisioning(list);
+            return new(true, SbEntityReader.DlqTotal(list), missing, checkedCount);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { return null; }
     }
@@ -164,7 +184,7 @@ public sealed class ProjectHealthService(
         return new ProjectSummary(r.Id, r.Project, r.Env, HealthRules.Evaluate(detail), detail,
             r.Apps.Count, OverviewService.ActiveEntities(p, options.ServiceBus.Scope).Count(e => e.Kind == "queue"),
             sbHealth.DlqTotal is { } dlq ? (int)Math.Min(dlq, int.MaxValue) : null, r.GeneratedAt.ToString("yyyy-MM-ddTHH:mm:sszzz"),
-            TraceItUrl(p, options));
+            TraceItUrl(p, options), Notice(sbHealth));
     }
 
     public async Task<int> AppsUpAsync(OverviewProject p, CancellationToken ct)
@@ -174,6 +194,13 @@ public sealed class ProjectHealthService(
             || app.Local?.Port is { } port && await ports.IsListeningAsync(port, ct)));
         return up.Count(x => x);
     }
+
+    /// <summary>ADDENDA-009: entities not provisioned on a reachable namespace is a notice (warn), not an SB error.</summary>
+    public static ProjectNotice? Notice(SbHealth sb) => sb.MostlyMissing
+        ? new ProjectNotice("ENTITIES_NOT_PROVISIONED", "warn",
+            $"{sb.Missing} of {sb.Checked} Service Bus entities are not provisioned on this namespace (the namespace itself answers).",
+            sb.Missing, sb.Checked)
+        : null;
 
     /// <summary>Registration observability.traceIt.url, else Overview:TraceIt:Url; null when neither is set.</summary>
     public static string? TraceItUrl(OverviewProject p, OverviewOptions options) =>

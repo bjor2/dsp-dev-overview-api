@@ -62,6 +62,10 @@ public sealed class ServiceBusOptions
     public double CountTimeoutSeconds { get; set; } = 3;
     /// <summary>Budget for the reachability probe; over budget = unreachable.</summary>
     public double ProbeTimeoutSeconds { get; set; } = 3;
+    /// <summary>Budget for probes until one has succeeded (first AAD token + AMQP/WebSocket link can take several seconds).</summary>
+    public double ColdProbeTimeoutSeconds { get; set; } = 12;
+    /// <summary>A successful probe is reused this long (no new link per request; failures are never cached).</summary>
+    public double ProbeCacheSeconds { get; set; } = 10;
     /// <summary>MessagingEntityNotFound is remembered this long (e.g. emulator-only entities on a developer namespace).</summary>
     public double MissingEntityCacheSeconds { get; set; } = 300;
     /// <summary>Depth reads are shared between /flow, /sb/entities and /projects for this long.</summary>
@@ -223,17 +227,20 @@ public sealed class ProjectStore
         var registration = loader.Load(path);
         log.LogInformation("Registration {Id} loaded from {Path} (schema-valid)", registration.Id, registration.SourcePath);
 
-        var catalogPath = registration.Samples?.Catalog is { Length: > 0 } c ? Path.Combine(root, c) : null;
+        var noKit = registration.Samples?.Catalog is "none"; // ADDENDA-009 (price): no seed kit — a state, not a problem
+        var catalogPath = !noKit && registration.Samples?.Catalog is { Length: > 0 } c ? Path.Combine(root, c) : null;
         SampleCatalog? catalog = null;
         string? error = null;
-        if (catalogPath is null) error = "registration has no samples.catalog";
+        if (noKit) error = $"no sample kit for {registration.Id} (samples.catalog = none{(registration.Samples?.Source is { } src ? $"; {src}" : "")})";
+        else if (catalogPath is null) error = "registration has no samples.catalog";
         else if (!File.Exists(catalogPath)) error = $"catalog not found: {catalogPath}";
         else
         {
             catalog = SampleCatalog.Load(catalogPath);
             log.LogInformation("Sample catalog {Path}: {Count} messages", catalogPath, catalog.Messages.Count);
         }
-        if (error is not null) log.LogWarning("Project {Id}: {Error}", registration.Id, error);
+        if (error is not null && noKit) log.LogInformation("Project {Id}: {Error}", registration.Id, error);
+        else if (error is not null) log.LogWarning("Project {Id}: {Error}", registration.Id, error);
         return new OverviewProject(registration, catalog, catalogPath, error);
     }
 }

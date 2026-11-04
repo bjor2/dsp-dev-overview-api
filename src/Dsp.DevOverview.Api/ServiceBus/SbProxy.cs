@@ -138,7 +138,13 @@ public sealed class UpstreamSbHealthProbe(IHttpClientFactory factory, OverviewOp
             if (!p.TryGetProperty("id", out var id) || id.GetString() is not { } key) continue;
             var reachable = p.TryGetProperty("healthDetail", out var d) && d.TryGetProperty("sbReachable", out var r) && r.ValueKind == JsonValueKind.True;
             long? dlq = p.TryGetProperty("dlqTotal", out var t) && t.TryGetInt64(out var n) ? n : null;
-            result[key] = new SbHealth(reachable, reachable ? dlq : null);
+            int missing = 0, checkedCount = 0; // the upstream's ENTITIES_NOT_PROVISIONED notice passes through
+            if (p.TryGetProperty("notice", out var notice) && notice.ValueKind == JsonValueKind.Object)
+            {
+                if (notice.TryGetProperty("missing", out var m) && m.TryGetInt32(out var mi)) missing = mi;
+                if (notice.TryGetProperty("checked", out var c) && c.TryGetInt32(out var ci)) checkedCount = ci;
+            }
+            result[key] = new SbHealth(reachable, reachable ? dlq : null, missing, checkedCount);
         }
         return result;
     }

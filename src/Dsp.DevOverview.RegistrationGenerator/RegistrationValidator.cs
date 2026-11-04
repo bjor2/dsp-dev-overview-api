@@ -62,7 +62,7 @@ public static partial class HandlerNaming
 /// ADDENDA-008 cross-field checks on a v2 record (JSON Schema cannot express them):
 /// V-1 every containerId exists; V-2 edge endpoints are handlers, entities or ext:* (never container:* / app:*), trigger
 /// edges end at a handler; V-3 handler appId ∈ its container's resourceRefs; V-4 invariant I-1; V-5 ≥1 trigger edge per
-/// servicebus trigger (competing consumers allowed).
+/// servicebus trigger and per blob trigger with an entityId (competing consumers allowed); timer triggers need no edge.
 /// <para>I-1 (§11): ins(E) = sources of publish|forward|inject edges into E, outs(E) = targets of trigger edges from E. For
 /// N in both: when every N→E edge is <c>confidence: code</c>, <see cref="Apply"/> moves it to <c>N.selfRequeue</c>
 /// (<c>generated: true</c>) and drops the edge; otherwise I1_UNRESOLVED (a mis-attributed app-level edge must never become
@@ -115,7 +115,8 @@ public static class RegistrationValidator
 
         foreach (var (id, h) in handlers)
             foreach (var t in (h["triggers"] as JsonArray ?? []).OfType<JsonObject>())
-                if (Str(t, "kind") == "servicebus" && t["entityId"]?.ToString() is { } entity
+                // servicebus: entity → handler; blob (ADDENDA-009): blobContainer → handler when the trigger names one; timer: no edge.
+                if (Str(t, "kind") is "servicebus" or "blob" && t["entityId"]?.ToString() is { } entity
                     && !edges.OfType<JsonObject>().Any(e => Str(e, "kind") == "trigger" && Str(e, "from") == entity && Str(e, "to") == id))
                     issues.Add(new("V5_MISSING_TRIGGER_EDGE", $"handler {id}: no trigger edge {entity} → {id}"));
         return issues;

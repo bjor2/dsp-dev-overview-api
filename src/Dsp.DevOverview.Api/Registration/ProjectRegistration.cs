@@ -21,6 +21,8 @@ public sealed class ProjectRegistration
     public List<RegisteredHandler> Handlers { get; set; } = new();
     public List<RegisteredEntity> Entities { get; set; } = new();
     public List<RegisteredEdge> Edges { get; set; } = new();
+    /// <summary>ADDENDA-009: SB naming/namespace per host kind (emulator | developer-local-azure | cloud-dev). Optional.</summary>
+    public Dictionary<string, RegisteredHost>? Hosts { get; set; }
     /// <summary>Checked-in default Flow layout (graph ids; runtime positions override per key). Optional.</summary>
     public RegisteredLayoutDefaults? LayoutDefaults { get; set; }
     public RegisteredSamples? Samples { get; set; }
@@ -67,9 +69,18 @@ public sealed class RegisteredHandler
     public List<RegisteredSelfRequeue> SelfRequeue { get; set; } = new();
 }
 
+public sealed class RegisteredHost
+{
+    public string Namespace { get; set; } = "";
+    public bool? Provisioned { get; set; }
+    public string? Note { get; set; }
+}
+
 public sealed class RegisteredTrigger
 {
-    public string Kind { get; set; } = "";
+    public string Kind { get; set; } = "";          // servicebus | http | timer | blob
+    public string? Schedule { get; set; }           // timer
+    public string? Path { get; set; }               // blob
     public string? Function { get; set; }
     public string? EntityId { get; set; }
     public string? Setting { get; set; }
@@ -106,7 +117,10 @@ public sealed class RegisteredAppLocal
 public sealed class RegisteredEntity
 {
     public string Id { get; set; } = "";
-    public string Kind { get; set; } = "";          // queue | topic | subscription
+    public string Kind { get; set; } = "";          // queue | topic | subscription | blobContainer (ADDENDA-009)
+
+    /// <summary>blobContainer entities are blob storage: never probed, counted, peeked or purged on Service Bus.</summary>
+    [JsonIgnore] public bool IsServiceBus => Kind is "queue" or "topic" or "subscription";
     public string LocalName { get; set; } = "";
     public string? CloudName { get; set; }
     public string? Topic { get; set; }              // subscription → topic entity id

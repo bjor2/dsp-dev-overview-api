@@ -249,7 +249,8 @@
                   "enum": [
                     "servicebus",
                     "http",
-                    "timer"
+                    "timer",
+                    "blob"
                   ]
                 },
                 "function": {
@@ -266,6 +267,14 @@
                 },
                 "sourceFile": {
                   "type": "string"
+                },
+                "schedule": {
+                  "type": "string",
+                  "description": "ADDENDA-009: NCRONTAB literal, or resolved value of `setting` when the attribute is %Setting%"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "ADDENDA-009: blob path pattern, e.g. pricedumpfromoptimera/{filename}"
                 }
               },
               "allOf": [
@@ -282,12 +291,50 @@
                       "entityId"
                     ]
                   }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "timer"
+                      }
+                    }
+                  },
+                  "then": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "schedule"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "setting"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "blob"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "path",
+                      "connection"
+                    ]
+                  }
                 }
               ]
             }
           },
           "selfRequeue": {
-            "description": "Generator output (ADDENDA-008 §11 I-1): code-attributed sends to the handler's own trigger entity. Never hand-edited.",
+            "description": "Generator output (ADDENDA-008 \u00a711 I-1): code-attributed sends to the handler's own trigger entity. Never hand-edited.",
             "type": "array",
             "items": {
               "type": "object",
@@ -337,7 +384,8 @@
             "enum": [
               "queue",
               "topic",
-              "subscription"
+              "subscription",
+              "blobContainer"
             ]
           },
           "localName": {
@@ -373,6 +421,10 @@
           },
           "maxDeliveryCount": {
             "type": "integer"
+          },
+          "storageAccountTemplate": {
+            "type": "string",
+            "description": "blobContainer only: account name template per host kind (no keys)"
           }
         }
       }
@@ -507,6 +559,45 @@
         },
         "note": {
           "type": "string"
+        }
+      }
+    },
+    "hosts": {
+      "description": "ADDENDA-009: SB entity naming per host kind (ADDENDA-004). Templates use {short}; no secrets.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "namespace"
+        ],
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "resourceGroup": {
+            "type": "string"
+          },
+          "queueTemplate": {
+            "type": "string"
+          },
+          "topicTemplate": {
+            "type": "string"
+          },
+          "subscriptionTemplate": {
+            "type": "string"
+          },
+          "mutating": {
+            "type": "boolean"
+          },
+          "provisioned": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
         }
       }
     }

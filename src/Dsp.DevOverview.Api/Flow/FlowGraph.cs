@@ -20,7 +20,18 @@ public sealed record FlowAppInfo(
 /// <summary>Live depths; null = unknown (probe failed, topic, auto-forwarding entity, or not in the active SB scope). DLQs are not nodes.</summary>
 public sealed record FlowSbInfo(
     long? ActiveCount, long? DeadLetterCount, bool DlqHot, string Owner,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MaxDeliveryCount);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MaxDeliveryCount,
+    // ADDENDA-009: "missing" = not found on this namespace (counts null; render as not provisioned, not as an error). Absent otherwise.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? State = null);
+
+/// <summary>One trigger of a handler (ADDENDA-009): servicebus | http | timer (schedule/setting → clock badge) | blob (path, from a blobContainer).</summary>
+public sealed record FlowTrigger(
+    string Kind,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Function,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EntityId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Schedule,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Setting,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Path);
 
 /// <summary>Self-requeue badge (I-1): the handler re-sends to its own trigger entity; never drawn as an edge (OQ-1).</summary>
 public sealed record FlowSelfRequeue(string EntityId, IReadOnlyList<string> Messages, IReadOnlyList<string> Sources);
@@ -29,10 +40,12 @@ public sealed record FlowSelfRequeue(string EntityId, IReadOnlyList<string> Mess
 public sealed record FlowHandlerInfo(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Function,
     IReadOnlyList<string> TriggerEntityIds,
-    IReadOnlyList<FlowSelfRequeue> SelfRequeue);
+    IReadOnlyList<FlowSelfRequeue> SelfRequeue,
+    // ADDENDA-009 (additive): every trigger; a grouped timer handler lists all its timer functions here.
+    IReadOnlyList<FlowTrigger>? Triggers = null);
 
 /// <summary>
-/// kind: handler | queue | topic | subscription | external. <c>position</c> is RELATIVE to the container origin when
+/// kind: handler | queue | topic | subscription | blobContainer (ADDENDA-009, no <c>sb</c>) | external. <c>position</c> is RELATIVE to the container origin when
 /// <c>containerId</c> is set (handlers), else absolute.
 /// </summary>
 public sealed record FlowNode(
@@ -148,17 +161,24 @@ public static class FlowGraphBuilder
             var info = new FlowHandlerInfo(
                 h.Triggers.Select(t => t.Function).FirstOrDefault(f => f is not null),
                 h.Triggers.Select(t => t.EntityId).OfType<string>().ToList(),
-                h.SelfRequeue.Select(s => new FlowSelfRequeue(s.EntityId, s.Messages, s.Sources)).ToList());
+                h.SelfRequeue.Select(s => new FlowSelfRequeue(s.EntityId, s.Messages, s.Sources)).ToList(),
+                h.Triggers.Select(t => new FlowTrigger(t.Kind, t.Function, t.EntityId, t.Schedule, t.Setting, t.Path)).ToList());
             nodes.Add(new FlowNode(h.Id, "handler", h.Label, h.Scope ?? containerScope.GetValueOrDefault(h.ContainerId, "both"), null, null, null,
                 h.ContainerId, info));
         }
 
         foreach (var e in r.Entities)
         {
+            if (!e.IsServiceBus) // blobContainer: a plain source node, never Service Bus
+            {
+                nodes.Add(new FlowNode(e.Id, e.Kind, Label(e), e.Scope ?? "both", null, null, null));
+                continue;
+            }
             var c = depths.GetValueOrDefault(e.Id);
             var maxDelivery = e.Kind == "topic" ? (int?)null : e.MaxDeliveryCountFor(e.ExistsIn(sbScope) ? sbScope : Other(sbScope));
             nodes.Add(new FlowNode(e.Id, e.Kind, Label(e), e.Scope ?? "both", null,
-                new FlowSbInfo(c?.Active, c?.DeadLetter, DlqHot: c?.DeadLetter is > 0, e.Owner ?? "project", maxDelivery), null));
+                new FlowSbInfo(c?.Active, c?.DeadLetter, DlqHot: c?.DeadLetter is > 0, e.Owner ?? "project", maxDelivery,
+                    c?.Source == "missing" ? "missing" : null), null));
         }
 
         // External sources (ext:*) exist only as edge endpoints; their scope is the union of their edges' scopes.

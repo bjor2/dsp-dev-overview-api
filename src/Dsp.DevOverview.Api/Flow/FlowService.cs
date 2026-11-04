@@ -19,6 +19,7 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
         var dir = FlowGraphBuilder.ParseDirection(direction);
         var warnings = new List<string>();
 
+        if (HostMismatch(p, options.ServiceBus) is { } mismatch) warnings.Add(mismatch);
         var depths = await DepthsAsync(p, view, warnings, ct);
 
         IReadOnlyDictionary<string, FlowPosition> stored;
@@ -33,6 +34,19 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
         var (effective, sources) = FlowGraphBuilder.EffectivePositions(p.Registration, stored);
         return FlowGraphBuilder.Build(p.Registration, view, dir, SbScope, depths, effective, warnings,
             appId => console.IsManagedRunning(p.Id, appId), sources);
+    }
+
+    /// <summary>
+    /// ADDENDA-009 <c>hosts</c>: when the registration names a different namespace for the active host kind, depths come from the
+    /// configured namespace (one per API) — say so instead of silently showing another namespace's state.
+    /// </summary>
+    public static string? HostMismatch(OverviewProject p, ServiceBusOptions sb)
+    {
+        if (p.Registration.Hosts?.GetValueOrDefault(sb.HostKindLabel) is not { Namespace: { Length: > 0 } expected }) return null;
+        var actual = sb.HostKind == SbHostKind.Emulator ? "sbemulatorns" : sb.NormalizedNamespace;
+        if (actual is null || string.Equals(expected.Trim(), actual, StringComparison.OrdinalIgnoreCase) || !expected.Contains('.') && sb.HostKind != SbHostKind.Emulator)
+            return null; // same namespace, or the registration only has a placeholder (e.g. "870 dev shared namespace (name unconfirmed)")
+        return $"SB_HOST_NAMESPACE_MISMATCH: registration hosts.{sb.HostKindLabel}.namespace is {expected}, but this API reads {actual}; depths/missing state refer to {actual}.";
     }
 
     /// <summary>
@@ -59,7 +73,8 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
     private async Task<Dictionary<string, EntityCounts>> DepthsAsync(OverviewProject p, FlowScope view, List<string> warnings, CancellationToken ct)
     {
         var result = new Dictionary<string, EntityCounts>();
-        var entities = overview.ActiveEntities(p).Where(e => FlowGraphBuilder.IsVisible(e.Scope, view) && e.Kind != "topic").ToList();
+        // Topics too: their counts stay null, but a topic missing on the namespace reports state "missing" (ADDENDA-009).
+        var entities = overview.ActiveEntities(p).Where(e => FlowGraphBuilder.IsVisible(e.Scope, view)).ToList();
         var probe = entities.FirstOrDefault(e => e.Kind == "queue");
         if (probe is null) return result;
         bool reachable;

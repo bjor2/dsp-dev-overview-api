@@ -24,20 +24,25 @@ public sealed class OverviewService(ProjectStore store, SbGateway sb, OverviewOp
         ?? throw new ApiException(StatusCodes.Status404NotFound, "PROJECT_NOT_FOUND", $"No registration with id '{id}'. Known: {string.Join(", ", store.All.Select(p => p.Id))}");
 
     private static SampleCatalog Catalog(OverviewProject p) => p.Catalog
-        ?? throw new ApiException(StatusCodes.Status404NotFound, "CATALOG_MISSING", p.CatalogError ?? "No sample catalog.");
+        ?? (p.Registration.Samples?.Catalog is "none"
+            ? throw new ApiException(StatusCodes.Status404NotFound, "SAMPLES_NOT_AVAILABLE", p.CatalogError ?? "This project has no sample kit.")
+            : throw new ApiException(StatusCodes.Status404NotFound, "CATALOG_MISSING", p.CatalogError ?? "No sample catalog."));
 
     private SbScope Scope => options.ServiceBus.Scope;
 
     public IEnumerable<RegisteredEntity> ActiveEntities(OverviewProject p) => ActiveEntities(p, Scope);
 
+    /// <summary>Service Bus entities of the active scope. blobContainer entities (ADDENDA-009) are never Service Bus: no probe, count, peek or purge.</summary>
     public static IEnumerable<RegisteredEntity> ActiveEntities(OverviewProject p, SbScope scope) =>
-        p.Registration.Entities.Where(e => e.ExistsIn(scope) && e.LocalName is { Length: > 0 } and not "n/a");
+        p.Registration.Entities.Where(e => e.IsServiceBus && e.ExistsIn(scope) && e.LocalName is { Length: > 0 } and not "n/a");
 
     public RegisteredEntity Entity(OverviewProject p, string entityId)
     {
         var id = Uri.UnescapeDataString(entityId);
         var entity = p.Registration.FindEntity(id)
             ?? throw new ApiException(StatusCodes.Status404NotFound, "UNKNOWN_ENTITY", $"{id} is not in registration {p.Id}.");
+        if (!entity.IsServiceBus)
+            throw new ApiException(StatusCodes.Status400BadRequest, "ENTITY_NOT_SERVICE_BUS", $"{id} is a {entity.Kind} (blob storage), not a Service Bus entity.");
         if (!entity.ExistsIn(Scope))
             throw new ApiException(StatusCodes.Status404NotFound, "ENTITY_NOT_IN_SCOPE", $"{id} is scope '{entity.Scope}', not available in scope '{Scope.ToString().ToLowerInvariant()}'.");
         return entity;
@@ -114,6 +119,9 @@ public sealed class OverviewService(ProjectStore store, SbGateway sb, OverviewOp
     public SampleMessageCatalogDto Samples(string id)
     {
         var p = Project(id);
+        if (p.Catalog is null && p.Registration.Samples?.Catalog is "none") // no kit for this project: a state, not an error
+            return new SampleMessageCatalogDto(p.Id, p.Registration.Samples.Source ?? "none", "", default, "none", [], [], [],
+                Available: false, Reason: p.CatalogError);
         var c = Catalog(p);
         var profileName = CommandPropertyProfile(p);
         var profile = c.Commands.PropertyProfiles.GetValueOrDefault(profileName)
