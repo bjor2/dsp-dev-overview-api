@@ -1,10 +1,12 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Dsp.DevOverview.RegistrationGenerator;
 using Json.Schema;
 
 namespace Dsp.DevOverview.Api.Registration;
 
 public sealed class RegistrationValidationException(string path, IReadOnlyList<string> errors)
-    : Exception($"Registration {path} does not match registration.schema.json:\n  " + string.Join("\n  ", errors))
+    : Exception($"Registration {path} does not match registration.schema.json / ADDENDA-008 validators:\n  " + string.Join("\n  ", errors))
 {
     public IReadOnlyList<string> Errors { get; } = errors;
 }
@@ -32,15 +34,34 @@ public sealed class RegistrationLoader
             .ToList();
     }
 
+    /// <summary>
+    /// Schema check, then (v1 = no schemaVersion) an in-memory upgrade to v2 that is schema-checked again, then the
+    /// ADDENDA-008 cross-field validators (V-1..V-5, I-1). The file is never rewritten.
+    /// </summary>
     public ProjectRegistration Load(string path)
     {
         var full = Path.GetFullPath(path);
-        using var doc = JsonDocument.Parse(File.ReadAllText(full));
-        var errors = Validate(doc.RootElement);
-        if (errors.Count > 0) throw new RegistrationValidationException(full, errors);
-        var registration = doc.RootElement.Deserialize<ProjectRegistration>(RegistrationJson.Options)
+        var text = File.ReadAllText(full);
+        using (var doc = JsonDocument.Parse(text))
+        {
+            var errors = Validate(doc.RootElement);
+            if (errors.Count > 0) throw new RegistrationValidationException(full, errors);
+        }
+        var node = JsonNode.Parse(text)!.AsObject();
+        IReadOnlyList<string> notes = [];
+        if (node["schemaVersion"] is null)
+        {
+            (node, notes) = RegistrationUpgrade.ToV2(node);
+            using var upgraded = JsonDocument.Parse(node.ToJsonString());
+            var errors = Validate(upgraded.RootElement);
+            if (errors.Count > 0) throw new RegistrationValidationException(full, errors.Select(e => "after v1→v2 upgrade: " + e).ToList());
+        }
+        var issues = RegistrationValidator.Check(node);
+        if (issues.Count > 0) throw new RegistrationValidationException(full, issues.Select(i => i.ToString()).ToList());
+        var registration = node.Deserialize<ProjectRegistration>(RegistrationJson.Options)
             ?? throw new InvalidDataException($"Empty registration: {full}");
         registration.SourcePath = full;
+        registration.UpgradeNotes = notes;
         return registration;
     }
 }

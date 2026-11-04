@@ -70,20 +70,22 @@ public static class SbEntityReader
         {
             if (probe is null || !await isReachable(probe, p.Registration, ct))
                 throw new ApiException(StatusCodes.Status503ServiceUnavailable, "SB_UNREACHABLE", options.ServiceBus.UnreachableMessage, retryable: true);
-            var result = new List<EntityStatus>();
-            foreach (var e in entities)
+            current = null;
+            // Parallel and individually bounded (SbGateway/SbCountReader): one slow or missing entity can't stall the list.
+            var all = await ServiceBus.SbCountReader.ForAllAsync(entities, options.ServiceBus.CountParallelism, async (e, c) =>
             {
-                current = e;
-                var c = await counts(e, p.Registration, ct);
-                result.Add(new EntityStatus(e.Id, e.Kind, options.ServiceBus.EntityName(e), c.Active, c.DeadLetter,
-                    DlqHot: c.DeadLetter is > 0, Owner: e.Owner ?? "project", ParentEntityId: e.Kind == "subscription" ? e.Topic : null));
-            }
-            return result;
+                EntityCounts counts1;
+                try { counts1 = await counts(e, p.Registration, c); }
+                catch { current ??= e; throw; }
+                return new EntityStatus(e.Id, e.Kind, options.ServiceBus.EntityName(e), counts1.Active, counts1.DeadLetter,
+                    DlqHot: counts1.DeadLetter is > 0, Owner: e.Owner ?? "project", ParentEntityId: e.Kind == "subscription" ? e.Topic : null);
+            }, ct);
+            return all;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             log.LogWarning("SB entities read failed for {Project} at entity {Entity}: {ExceptionType}{Code}: {Message}",
-                p.Id, current is null ? "(no queue registered)" : options.ServiceBus.EntityName(current), ex.GetType().Name,
+                p.Id, current is null ? (probe is null ? "(no queue registered)" : "(probe)") : options.ServiceBus.EntityName(current), ex.GetType().Name,
                 ex is ApiException a ? $" {a.Code}" : "", ShortMessage(ex.Message));
             throw;
         }

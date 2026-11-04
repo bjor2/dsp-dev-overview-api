@@ -3,38 +3,514 @@
   "$id": "dsp-dev-overview/registration.schema.json",
   "title": "DSP Dev Overview registration",
   "type": "object",
-  "required": ["id", "project", "env", "generatedAt", "sources", "apps", "entities", "edges", "observability"],
+  "required": [
+    "id",
+    "project",
+    "env",
+    "generatedAt",
+    "sources",
+    "apps",
+    "entities",
+    "edges",
+    "observability"
+  ],
   "properties": {
-    "id": {"type": "string", "pattern": "^[a-z0-9-]+\\.(dev)$"},
-    "project": {"type": "string"},
-    "env": {"enum": ["dev"]},
-    "generatedAt": {"type": "string", "format": "date-time"},
-    "sources": {"type": "array", "items": {"type": "object", "required": ["kind", "path"], "properties": {"kind": {"enum": ["terraform", "trigger-scan", "local-config", "run-script", "sample-kit"]}, "path": {"type": "string"}, "commit": {"type": "string"}}}},
-    "apps": {"type": "array", "items": {"type": "object", "required": ["id", "name", "kind"], "properties": {
-      "id": {"type": "string"}, "name": {"type": "string"},
-      "kind": {"enum": ["web", "func", "func-ingress"]},
-      "azureResource": {"type": "string"}, "cloudRoleName": {"type": "string"},
-      "local": {"type": "object", "properties": {"port": {"type": "integer"}, "runScript": {"type": "string"}, "url": {"type": "string"}}},
-      "triggers": {"type": "array", "items": {"type": "object", "required": ["function", "entityId"], "properties": {"function": {"type": "string"}, "entityId": {"type": "string"}, "setting": {"type": "string"}, "connection": {"type": "string"}, "sourceFile": {"type": "string"}}}}
-    }}},
-    "entities": {"type": "array", "items": {"type": "object", "required": ["id", "kind", "localName"], "properties": {
-      "id": {"type": "string"}, "kind": {"enum": ["queue", "topic", "subscription"]},
-      "localName": {"type": "string"}, "cloudName": {"type": ["string", "null"]},
-      "topic": {"type": "string"}, "forwardTo": {"type": "string"}, "sqlFilter": {"type": "string"},
-      "owner": {"enum": ["project", "shared"]}, "scope": {"enum": ["local", "cloud", "both"]},
-      "maxDeliveryCount": {"type": "integer"}
-    }}},
-    "edges": {"type": "array", "items": {"type": "object", "required": ["from", "to", "kind"], "properties": {
-      "from": {"type": "string"}, "to": {"type": "string"},
-      "kind": {"enum": ["trigger", "publish", "subscription", "forward", "inject"]},
-      "label": {"type": "string"}, "scope": {"enum": ["local", "cloud", "both"]},
-      "confidence": {"enum": ["code", "terraform", "inferred-from-settings", "manual"]}
-    }}},
-    "observability": {"type": "object", "properties": {
-      "appInsights": {"type": "object", "properties": {"resource": {"type": "string"}, "resourceGroup": {"type": "string"}, "subscription": {"type": "string"}}},
-      "traceIt": {"type": "object", "properties": {"url": {"type": "string"}, "status": {"type": "string"}}}
-    }},
-    "samples": {"type": "object", "properties": {"catalog": {"type": "string"}, "source": {"type": "string"}}},
-    "overrides": {"type": "object"}
-  }
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+\\.(dev)$"
+    },
+    "project": {
+      "type": "string"
+    },
+    "env": {
+      "enum": [
+        "dev"
+      ]
+    },
+    "schemaVersion": {
+      "description": "ADDENDA-008: 2 = handlers[] + containers[]. Missing = 1 (loader upgrades v1 in memory).",
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "path"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "terraform",
+              "trigger-scan",
+              "local-config",
+              "run-script",
+              "sample-kit"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "apps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "web",
+              "func",
+              "func-ingress"
+            ]
+          },
+          "azureResource": {
+            "type": "string"
+          },
+          "cloudRoleName": {
+            "type": "string"
+          },
+          "local": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "integer"
+              },
+              "runScript": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "function",
+                "entityId"
+              ],
+              "properties": {
+                "function": {
+                  "type": "string"
+                },
+                "entityId": {
+                  "type": "string"
+                },
+                "setting": {
+                  "type": "string"
+                },
+                "connection": {
+                  "type": "string"
+                },
+                "sourceFile": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "containers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "resourceRefs"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^container:[a-z0-9.-]+$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "resource",
+              "logical"
+            ]
+          },
+          "resourceRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^app:"
+            },
+            "minItems": 1
+          },
+          "scope": {
+            "enum": [
+              "local",
+              "cloud",
+              "both"
+            ],
+            "default": "both"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "resource"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "resourceRefs": {
+                  "maxItems": 1
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "handlers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "appId",
+          "containerId",
+          "triggers"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+\\.[a-z0-9.-]+$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string",
+            "pattern": "^app:"
+          },
+          "containerId": {
+            "type": "string",
+            "pattern": "^container:"
+          },
+          "scope": {
+            "enum": [
+              "local",
+              "cloud",
+              "both"
+            ],
+            "description": "default = container scope"
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "servicebus",
+                    "http",
+                    "timer"
+                  ]
+                },
+                "function": {
+                  "type": "string"
+                },
+                "entityId": {
+                  "type": "string"
+                },
+                "setting": {
+                  "type": "string"
+                },
+                "connection": {
+                  "type": "string"
+                },
+                "sourceFile": {
+                  "type": "string"
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "servicebus"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "entityId"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "selfRequeue": {
+            "description": "Generator output (ADDENDA-008 §11 I-1): code-attributed sends to the handler's own trigger entity. Never hand-edited.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "entityId"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "entityId": {
+                  "type": "string"
+                },
+                "messages": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "generated": {
+                  "const": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "localName"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "queue",
+              "topic",
+              "subscription"
+            ]
+          },
+          "localName": {
+            "type": "string"
+          },
+          "cloudName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "topic": {
+            "type": "string"
+          },
+          "forwardTo": {
+            "type": "string"
+          },
+          "sqlFilter": {
+            "type": "string"
+          },
+          "owner": {
+            "enum": [
+              "project",
+              "shared"
+            ]
+          },
+          "scope": {
+            "enum": [
+              "local",
+              "cloud",
+              "both"
+            ]
+          },
+          "maxDeliveryCount": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "kind"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "trigger",
+              "publish",
+              "subscription",
+              "forward",
+              "inject"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "local",
+              "cloud",
+              "both"
+            ]
+          },
+          "confidence": {
+            "enum": [
+              "code",
+              "terraform",
+              "inferred-from-settings",
+              "manual"
+            ]
+          },
+          "sources": {
+            "description": "file:line of the send calls (confidence code)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "messages": {
+            "description": "message types sent (from `new X` at the call site)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "properties": {
+        "appInsights": {
+          "type": "object",
+          "properties": {
+            "resource": {
+              "type": "string"
+            },
+            "resourceGroup": {
+              "type": "string"
+            },
+            "subscription": {
+              "type": "string"
+            }
+          }
+        },
+        "traceIt": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "samples": {
+      "type": "object",
+      "properties": {
+        "catalog": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "overrides": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "schemaVersion"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "const": 2
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "containers",
+          "handlers"
+        ],
+        "properties": {
+          "apps": {
+            "items": {
+              "not": {
+                "required": [
+                  "triggers"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

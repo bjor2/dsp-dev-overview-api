@@ -22,7 +22,7 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
         var depths = await DepthsAsync(p, view, warnings, ct);
 
         IReadOnlyDictionary<string, FlowPosition> stored;
-        try { stored = positions.Load(p.Id); }
+        try { stored = positions.Load(p.Id, FlowPositionContext.For(p.Registration)); }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
             warnings.Add($"FLOW_POSITIONS_UNREADABLE: {positions.PathFor(p.Id)} ignored ({ex.Message}); layout is auto.");
@@ -55,26 +55,34 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
             warnings.Add($"SB_UNREACHABLE: {options.ServiceBus.UnreachableMessage} Depths are null.");
             return result;
         }
-        foreach (var e in entities)
+        // Parallel, each read bounded by SbGateway (timeout / missing entity → null depth, never a hang).
+        var read = await SbCountReader.ForAllAsync(entities, options.ServiceBus.CountParallelism, async (e, c) =>
         {
-            try { result[e.Id] = await sb.GetCountsAsync(e, p.Registration, ct); }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            try { return (e, (EntityCounts?)await sb.GetCountsAsync(e, p.Registration, c), (string?)null); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !c.IsCancellationRequested)
             {
                 log.LogWarning("Flow depth for {Entity} failed: {Message}", e.Id, ex.Message);
-                warnings.Add($"SB_DEPTH_FAILED: {e.Id} depth unavailable ({ex.Message}).");
+                return (e, null, $"SB_DEPTH_FAILED: {e.Id} depth unavailable ({ex.Message}).");
             }
+        }, ct);
+        foreach (var (e, counts, warning) in read)
+        {
+            if (counts is not null) result[e.Id] = counts;
+            if (warning is not null) warnings.Add(warning);
         }
         return result;
     }
 
-    // PUT /api/projects/{id}/flow/positions  {nodeId:{x,y}}  ({} = reset)
+    // PUT /api/projects/{id}/flow/positions  {graphId:{x,y}}  ({} = reset this env). Partial: only the sent keys change.
+    // Containers and standalone nodes absolute, handler nodes relative to their container (ADDENDA-008 §7).
     public async Task<IReadOnlyDictionary<string, FlowPosition>> SavePositionsAsync(string id, Dictionary<string, FlowPositionInput>? body, CancellationToken ct)
     {
         var p = overview.Project(id);
         if (body is null)
             throw new ApiException(StatusCodes.Status400BadRequest, "INVALID_POSITIONS", "Body must be {\"<nodeId>\":{\"x\":<number>,\"y\":<number>}} ({} resets).");
 
-        var known = FlowGraphBuilder.AllNodeIds(p.Registration);
+        var known = FlowGraphBuilder.AllNodeIds(p.Registration); // nodes + containers
+        var ctx = FlowPositionContext.For(p.Registration);
         var updates = new Dictionary<string, FlowPosition>();
         foreach (var (nodeId, pos) in body)
         {
@@ -86,9 +94,9 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
         // A body with only unknown ids is not a reset: only a literal {} clears.
         if (updates.Count == 0 && body.Count > 0)
         {
-            try { return positions.Load(p.Id); }
+            try { return positions.Load(p.Id, ctx); }
             catch (JsonException) { return new Dictionary<string, FlowPosition>(); }
         }
-        return await positions.MergeAsync(p.Id, updates, known, ct);
+        return await positions.MergeAsync(p.Id, updates, ctx, ct);
     }
 }

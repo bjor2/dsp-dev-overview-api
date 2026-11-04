@@ -7,14 +7,16 @@ public static class RegistrationDiff
 {
     public static IReadOnlyList<string> Describe(JsonObject? before, JsonObject after)
     {
-        if (before is null) return [$"new record {after["id"]}: {Count(after, "apps")} apps, {Count(after, "entities")} entities, {Count(after, "edges")} edges"];
+        if (before is null) return [$"new record {after["id"]}: {Count(after, "apps")} apps, {Count(after, "containers")} containers, {Count(after, "handlers")} handlers, {Count(after, "entities")} entities, {Count(after, "edges")} edges"];
         var lines = new List<string>();
         Items(lines, "apps", before, after, o => o["id"]?.ToString() ?? "");
+        Items(lines, "containers", before, after, o => o["id"]?.ToString() ?? "");
+        Items(lines, "handlers", before, after, o => o["id"]?.ToString() ?? "");
         Items(lines, "entities", before, after, o => o["id"]?.ToString() ?? "");
         Items(lines, "edges", before, after, o => EdgeLabel(o));
 
         var sections = before.Select(kv => kv.Key).Union(after.Select(kv => kv.Key))
-            .Where(k => k is not ("apps" or "entities" or "edges" or "generatedAt"));
+            .Where(k => k is not ("apps" or "containers" or "handlers" or "entities" or "edges" or "generatedAt"));
         foreach (var key in sections)
         {
             var b = before[key];

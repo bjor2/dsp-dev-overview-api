@@ -37,9 +37,11 @@ public sealed class GeneratorInputs
 
 public sealed class GeneratorInputException(string message) : Exception(message);
 
-public sealed record GenerationResult(JsonObject Record, IReadOnlyList<string> Diff, IReadOnlyList<string> Gaps, IReadOnlyList<string> SchemaErrors)
+public sealed record GenerationResult(JsonObject Record, IReadOnlyList<string> Diff, IReadOnlyList<string> Gaps, IReadOnlyList<string> SchemaErrors,
+    IReadOnlyList<RegistrationIssue> Issues)
 {
-    public bool IsValid => SchemaErrors.Count == 0;
+    /// <summary>Schema-valid and no V-1..V-5 / I-1 issue (ADDENDA-008 §9.3).</summary>
+    public bool IsValid => SchemaErrors.Count == 0 && Issues.Count == 0;
     public string ToJson() => RegistrationGenerator.Serialize(Record);
 }
 
@@ -64,10 +66,11 @@ public static class RegistrationGenerator
         var generated = new Builder(inputs, current, gaps).Build(now);
         var merged = Merge(current, generated);
         ApplyOverrides(merged);
+        var issues = RegistrationValidator.Apply(merged); // I-1: code self-sends → selfRequeue badges
         var errors = File.Exists(inputs.SchemaPath)
             ? RegistrationSchema.Load(inputs.SchemaPath).Validate(merged)
             : [$"schema not found: {inputs.SchemaPath}"];
-        return new GenerationResult(merged, RegistrationDiff.Describe(current, merged), gaps, errors);
+        return new GenerationResult(merged, RegistrationDiff.Describe(current, merged), gaps.Distinct().ToList(), errors, issues);
     }
 
     public static JsonObject? ReadCurrent(string path) =>
@@ -77,7 +80,10 @@ public static class RegistrationGenerator
 
     private static readonly string[] AppOwned = ["id", "name", "kind", "azureResource", "triggers"];
     private static readonly string[] EntityOwned = ["id", "kind", "localName", "cloudName", "topic", "forwardTo", "sqlFilter", "owner", "scope", "cloudMaxDeliveryCount"];
-    private static readonly string[] EdgeOwned = ["from", "to", "kind", "scope", "confidence"];
+    private static readonly string[] EdgeOwned = ["from", "to", "kind", "scope", "confidence", "sources", "messages"];
+    private static readonly string[] ContainerOwned = ["id", "label", "kind", "resourceRefs", "scope"];
+    private static readonly string[] HandlerOwned = ["id", "label", "appId", "containerId", "scope", "triggers", "selfRequeue"];
+    private static readonly string[] KeyOrder = ["id", "project", "env", "schemaVersion", "generatedAt", "sources", "apps", "containers", "handlers", "entities", "edges"];
     private static readonly string[] SamplesOwned = ["catalog", "source"];
 
     public static string EdgeKey(JsonNode? e) => $"{e?["from"]}|{e?["to"]}|{e?["kind"]}";
@@ -88,18 +94,29 @@ public static class RegistrationGenerator
         {
             var fresh = (JsonObject)generated.DeepClone();
             fresh["overrides"] ??= new JsonObject();
-            return fresh;
+            return Ordered(fresh);
         }
         var result = (JsonObject)current.DeepClone();
-        foreach (var key in new[] { "id", "project", "env", "generatedAt" }) result[key] = generated[key]!.DeepClone();
+        foreach (var key in new[] { "id", "project", "env", "schemaVersion", "generatedAt" }) result[key] = generated[key]!.DeepClone();
 
         result["sources"] = UnionSources(generated["sources"] as JsonArray, current["sources"] as JsonArray);
         result["apps"] = MergeById(current["apps"] as JsonArray, (JsonArray)generated["apps"]!, AppOwned, MergeApp);
+        result["containers"] = MergeById(current["containers"] as JsonArray, (JsonArray)generated["containers"]!, ContainerOwned, (c, g) => MergeObject(c, g, ContainerOwned));
+        result["handlers"] = MergeById(current["handlers"] as JsonArray, (JsonArray)generated["handlers"]!, HandlerOwned, (c, g) => MergeObject(c, g, HandlerOwned));
         result["entities"] = MergeById(current["entities"] as JsonArray, (JsonArray)generated["entities"]!, EntityOwned, MergeEntity);
-        result["edges"] = MergeEdges(current["edges"] as JsonArray, (JsonArray)generated["edges"]!);
+        result["edges"] = MergeEdges(current["edges"] as JsonArray, (JsonArray)generated["edges"]!, (JsonArray)generated["handlers"]!);
         result["samples"] = MergeObject(current["samples"] as JsonObject, (JsonObject)generated["samples"]!, SamplesOwned);
         if (current["observability"] is not JsonObject) result["observability"] = generated["observability"]!.DeepClone();
         if (current["overrides"] is not JsonObject) result["overrides"] = new JsonObject();
+        return Ordered(result);
+    }
+
+    /// <summary>Stable key order (schemaVersion/containers/handlers next to their v1 neighbours); other keys keep their order.</summary>
+    private static JsonObject Ordered(JsonObject o)
+    {
+        var result = new JsonObject();
+        foreach (var key in KeyOrder.Where(o.ContainsKey)) result[key] = o[key]?.DeepClone();
+        foreach (var (key, value) in o) if (!result.ContainsKey(key)) result[key] = value?.DeepClone();
         return result;
     }
 
@@ -157,9 +174,11 @@ public static class RegistrationGenerator
         return list;
     }
 
-    private static JsonArray MergeEdges(JsonArray? current, JsonArray generated)
+    private static JsonArray MergeEdges(JsonArray? current, JsonArray generated, JsonArray handlers)
     {
         var byKey = (current ?? []).OfType<JsonObject>().GroupBy(EdgeKey).ToDictionary(g => g.Key, g => g.First());
+        // v1 → v2: hand labels on app-level edges ("commands", "PCO events") carry over to the handler edges of that app.
+        var appOf = handlers.OfType<JsonObject>().ToDictionary(h => h["id"]!.ToString(), h => h["appId"]?.ToString() ?? "");
         var list = new JsonArray();
         var keys = new HashSet<string>();
         foreach (var g in generated.OfType<JsonObject>())
@@ -169,6 +188,9 @@ public static class RegistrationGenerator
             var cur = byKey.GetValueOrDefault(key);
             var merged = MergeObject(cur, g, EdgeOwned);
             if (g["label"] is null && cur?["label"] is { } label) merged["label"] = label.DeepClone(); // hand labels ("commands", "PCO events")
+            else if (g["label"] is null && cur is null && appOf.TryGetValue(g["from"]!.ToString(), out var app)
+                     && byKey.GetValueOrDefault($"{app}|{g["to"]}|{g["kind"]}")?["label"] is { } appLabel)
+                merged["label"] = appLabel.DeepClone();
             list.Add(merged);
         }
         // Hand-maintained edges (seed-messages injects, ...) are never derived; keep them.
@@ -223,14 +245,21 @@ public static class RegistrationGenerator
     }
 
     private sealed record AppInfo(string Id, string Name, string Kind, string AzureResource, LocalApp Local,
-        IReadOnlyList<SbSetting> Settings, IReadOnlyList<FoundTrigger> Triggers, string TfFile);
+        IReadOnlyList<SbSetting> Settings, IReadOnlyList<FoundTrigger> Triggers, string TfFile)
+    {
+        public string ContainerId { get; set; } = "";
+    }
+
+    /// <summary>One Flow handler node: a [Function] + its trigger, or the HTTP surface of a web app (<see cref="Trigger"/> null).</summary>
+    private sealed record HandlerInfo(string Id, AppInfo App, FoundTrigger? Trigger, string? EntityId, JsonObject Json);
 
     private sealed class Builder(GeneratorInputs inputs, JsonObject? current, List<string> gaps)
     {
         private readonly List<EntityInfo> _entities = [];
         private readonly JsonArray _edges = [];
         private readonly JsonArray _sources = [];
-        private readonly Dictionary<string, JsonArray> _appTriggers = [];
+        private readonly List<HandlerInfo> _handlers = [];
+        private CodeIndex? _code;
         private Dictionary<string, string> _env = [];
         private LocalConfig _local = new([], []);
         private TfServiceBus _tf = new([], [], []);
@@ -260,10 +289,13 @@ public static class RegistrationGenerator
             if (File.Exists(envPath)) Source("local-config", envPath);
 
             var apps = ReadApps();
+            foreach (var app in apps)
+                app.ContainerId = HandlerNaming.ContainerId(inputs.Project, app.Id, app.Kind, apps.Select(a => (a.Id, a.Kind)));
             AddConfigEntities(apps);
             var appJson = new JsonArray();
             foreach (var app in apps) appJson.Add(AppJson(app));
-            AddPublishEdges(apps);
+            _code = Directory.Exists(Path.Combine(inputs.ServiceRepoPath, "src")) ? CodeIndex.Build(inputs.ServiceRepoPath) : null;
+            AttributeSends(apps);
             AddLocalSubscriptions();
             AddCloudSubscriptions(apps);
 
@@ -280,9 +312,12 @@ public static class RegistrationGenerator
                 ["id"] = inputs.Id,
                 ["project"] = inputs.Project,
                 ["env"] = inputs.Env,
+                ["schemaVersion"] = 2,
                 ["generatedAt"] = now.ToString("yyyy-MM-ddTHH:mm:sszzz"),
                 ["sources"] = _sources,
                 ["apps"] = appJson,
+                ["containers"] = ContainersJson(apps),
+                ["handlers"] = new JsonArray(_handlers.Select(h => (JsonNode)h.Json.DeepClone()).ToArray()),
                 ["entities"] = new JsonArray(_entities.Select(EntityJson).ToArray()),
                 ["edges"] = _edges,
                 ["observability"] = new JsonObject
@@ -417,10 +452,13 @@ public static class RegistrationGenerator
                 e.Local = true;
                 if (byLocal.TryGetValue(t.Name, out var hit) && hit.s.Kind == SettingKind.Topic) ApplyCloud(e, hit.s.ShortName, hit.a.Id, hit.s.Key);
             }
-            foreach (var app in apps) AddTriggerEdges(app);
+            foreach (var app in apps) AddHandlers(app);
         }
 
-        private void AddTriggerEdges(AppInfo app)
+        private JsonObject? Overrides => current?["overrides"] as JsonObject;
+
+        /// <summary>One handler per [Function] trigger (+ the HTTP surface of a web app); trigger edges end at the handler.</summary>
+        private void AddHandlers(AppInfo app)
         {
             foreach (var t in app.Triggers)
             {
@@ -438,30 +476,148 @@ public static class RegistrationGenerator
                 }
                 else e = _local.HasQueue(t.LiteralName!) ? Entity("queue", t.LiteralName, null) : Entity("queue", null, t.LiteralName);
                 if (e is null) { gaps.Add($"{app.Id}: trigger {t.Function} (%{t.Setting}%) could not be resolved to an entity"); continue; }
-                _edges.Add(Edge(e.Id, app.Id, "trigger", t.Function, e.Scope, "code"));
-                var trigger = new JsonObject { ["function"] = t.Function, ["entityId"] = e.Id };
+                var id = HandlerNaming.HandlerId(inputs.Project, t.Function, Overrides);
+                _edges.Add(Edge(e.Id, id, "trigger", t.Function, e.Scope, "code"));
+                var trigger = new JsonObject { ["kind"] = "servicebus", ["function"] = t.Function, ["entityId"] = e.Id };
                 if (t.Setting is not null) trigger["setting"] = t.Setting;
                 if (t.Connection is not null) trigger["connection"] = t.Connection;
                 trigger["sourceFile"] = t.SourceFile;
-                (_appTriggers.TryGetValue(app.Id, out var list) ? list : _appTriggers[app.Id] = []).Add(trigger);
+                _handlers.Add(new HandlerInfo(id, app, t, e.Id, HandlerJson(id, t.Function, app, trigger)));
+            }
+            if (app.Kind == "web")
+            {
+                var id = HandlerNaming.HttpHandlerId(inputs.Project, app.Id);
+                var trigger = new JsonObject { ["kind"] = "http" };
+                if (app.Local.ProjectFolder is { } folder) trigger["sourceFile"] = $"src/{folder}";
+                _handlers.Add(new HandlerInfo(id, app, null, null, HandlerJson(id, null, app, trigger)));
             }
         }
 
-        private void AddPublishEdges(List<AppInfo> apps)
+        private JsonObject HandlerJson(string id, string? function, AppInfo app, JsonObject trigger) => new()
+        {
+            ["id"] = id, ["label"] = HandlerNaming.HandlerLabel(id, inputs.Project, function, Overrides),
+            ["appId"] = app.Id, ["containerId"] = app.ContainerId, ["triggers"] = new JsonArray(trigger),
+        };
+
+        /// <summary>One resource container per app; overrides.logicalContainers[] adds logical ones and moves their members (§1.3, §11).</summary>
+        private JsonArray ContainersJson(List<AppInfo> apps)
+        {
+            var list = new JsonArray();
+            foreach (var a in apps)
+                list.Add(new JsonObject
+                {
+                    ["id"] = a.ContainerId, ["label"] = HandlerNaming.ContainerLabel(a.Name, a.Local.Port),
+                    ["kind"] = "resource", ["resourceRefs"] = new JsonArray(a.Id),
+                });
+            foreach (var l in (Overrides?["logicalContainers"] as JsonArray ?? []).OfType<JsonObject>())
+            {
+                var id = l["id"]?.ToString();
+                if (id is null) continue;
+                list.Add(new JsonObject
+                {
+                    ["id"] = id, ["label"] = l["label"]?.ToString() ?? id["container:".Length..], ["kind"] = "logical",
+                    ["resourceRefs"] = l["resourceRefs"]?.DeepClone() ?? new JsonArray(),
+                });
+                foreach (var member in (l["members"] as JsonArray ?? []).Select(m => m?.ToString()))
+                    if (_handlers.FirstOrDefault(h => h.Id == member) is { } h) h.Json["containerId"] = id;
+                    else gaps.Add($"overrides.logicalContainers {id}: member {member} is not a handler");
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// ADDENDA-008 §9.2: outbound edges per handler. Send sites reachable in code from the handler's [Function] method
+        /// (or the web app's controllers) become <c>confidence: code</c> edges with file:line <c>sources</c>. A queue/topic
+        /// app setting no handler sends to: no sender class for it in code → app-level fallback (every handler of the app,
+        /// <c>inferred-from-settings</c>); sends exist in code but none reachable from this app → same fallback (ambiguous);
+        /// a sender class with no send call anywhere → no edge (OQ-2: api → customerproject-ingress). Trigger-bound
+        /// settings never fall back. The retry client handed to the Dahl.Core MessageHandler base is not drawn (OQ-4).
+        /// </summary>
+        private void AttributeSends(List<AppInfo> apps)
         {
             foreach (var app in apps)
             {
-                // ADR-002: a queue/topic setting without a trigger means the app sends there. A trigger-bound setting
-                // (ingress reads and writes customerproject-snapshot) is only kept when the current record already has it.
+                var handlers = _handlers.Where(h => h.App == app).ToList();
+                if (handlers.Count == 0) continue;
+                var code = new List<(HandlerInfo H, EntityInfo E, List<SendSite> Sites)>();
+                foreach (var h in handlers)
+                {
+                    var sites = Sites(h);
+                    foreach (var g in sites.GroupBy(x => x.ConfigKey))
+                    {
+                        var e = EntityForKey(g.Key, app, h.Id);
+                        if (e is null) continue;
+                        var hit = code.FirstOrDefault(c => c.H == h && c.E == e);
+                        if (hit.H is null) code.Add((h, e, g.ToList()));
+                        else hit.Sites.AddRange(g);
+                    }
+                }
+                foreach (var (h, e, sites) in code)
+                {
+                    var edge = Edge(h.Id, e.Id, "publish", null, e.Scope, "code");
+                    edge["sources"] = new JsonArray(sites.Select(x => (JsonNode)x.Source).Distinct().ToArray());
+                    var messages = sites.Select(x => x.Message).OfType<string>().Distinct().Order(StringComparer.Ordinal).ToArray();
+                    if (messages.Length > 0) edge["messages"] = new JsonArray(messages.Select(m => (JsonNode)m).ToArray());
+                    _edges.Add(edge);
+                }
+
                 var triggered = app.Triggers.Select(t => t.Setting).ToHashSet();
                 foreach (var s in app.Settings.Where(s => s.Kind is SettingKind.Queue or SettingKind.Topic))
-                    if (Resolve(s, app.Id) is { } e && (!triggered.Contains(s.Key) || HasCurrentEdge(app.Id, e.Id, "publish")))
-                        _edges.Add(Edge(app.Id, e.Id, "publish", null, e.Scope, "inferred-from-settings"));
+                {
+                    if (Resolve(s, app.Id) is not { } e || code.Any(c => c.E == e)) continue;
+                    if (triggered.Contains(s.Key))
+                    {
+                        gaps.Add($"{app.Id}: {s.Key} → {e.Id} is trigger-bound; no other handler of the app sends to it in code");
+                        continue;
+                    }
+                    string why;
+                    if (_code is null || !_code.SenderConfigKeys.Contains(s.Key))
+                        why = $"no sender class for {s.Key} found in code";
+                    else if (_code.AllSites.Any(x => x.ConfigKey == s.Key))
+                        why = $"sends to {e.Id} exist in code but none is reachable from {app.Id}'s handlers (ambiguous)";
+                    else
+                    {
+                        gaps.Add($"{app.Id}: {s.Key} → {e.Id} has a sender class but no send call in code — no edge (ADDENDA-008 OQ-2)");
+                        continue;
+                    }
+                    gaps.Add($"{app.Id}: {why} — app-level fallback: {e.Id} from every handler of the app (inferred-from-settings)");
+                    foreach (var h in handlers)
+                        _edges.Add(Edge(h.Id, e.Id, "publish", null, e.Scope, "inferred-from-settings"));
+                }
             }
         }
 
-        private bool HasCurrentEdge(string from, string to, string kind) =>
-            (current?["edges"] as JsonArray ?? []).Any(e => EdgeKey(e) == $"{from}|{to}|{kind}");
+        /// <summary>Send sites of one handler: its [Function] method's call graph (Functions sharing a class stay apart), or all controllers.</summary>
+        private IReadOnlyList<SendSite> Sites(HandlerInfo h)
+        {
+            if (_code is null) return [];
+            if (h.Trigger is null)
+            {
+                var controllers = h.App.Local.ProjectFolder is { } folder ? _code.Controllers(folder) : [];
+                if (controllers.Count == 0) gaps.Add($"{h.Id}: no controllers found in src/{h.App.Local.ProjectFolder} — HTTP sends not attributed");
+                return _code.SitesFrom(controllers);
+            }
+            var root = _code.FunctionRoot(h.Trigger.SourceFile, h.Trigger.Function);
+            if (root is null)
+            {
+                gaps.Add($"{h.Id}: [Function(\"{h.Trigger.Function}\")] method not found in {h.Trigger.SourceFile} — sends not attributed");
+                return [];
+            }
+            foreach (var (type, key) in _code.BaseCtorSenders(root.Value.Class))
+                gaps.Add($"{h.Id}: {type} ({key}) is passed to the {string.Join("/", root.Value.Class.Bases)} base — Dahl.Core HandleWithRetry re-sends to its own trigger queue; retry infrastructure, not drawn (OQ-4)");
+            return _code.SitesFrom(root.Value.Class, root.Value.Method);
+        }
+
+        /// <summary>Config key of a sender → entity: this app's Terraform setting, else another app's, else env.linux.ps1 + Config.json.</summary>
+        private EntityInfo? EntityForKey(string key, AppInfo app, string handlerId)
+        {
+            if (app.Settings.FirstOrDefault(s => s.Key == key) is { } own) return Resolve(own, app.Id);
+            var local = _env.GetValueOrDefault(key);
+            if (local is not null && _local.HasQueue(local)) { gaps.Add($"{handlerId}: sends via {key}, which is not in {app.TfFile} app_settings (resolved from env.linux.ps1)"); return Entity("queue", local, null); }
+            if (local is not null && _local.HasTopic(local)) { gaps.Add($"{handlerId}: sends via {key}, which is not in {app.TfFile} app_settings (resolved from env.linux.ps1)"); return Entity("topic", local, null); }
+            gaps.Add($"{handlerId}: sends via {key}, which resolves to no queue/topic (not in app_settings or env.linux.ps1) — no edge");
+            return null;
+        }
 
         private void AddLocalSubscriptions()
         {
@@ -567,12 +723,10 @@ public static class RegistrationGenerator
             if (a.Local.Port is { } port) local["port"] = port;
             if (a.Local.Url is { } url) local["url"] = url;
             local["runScript"] = a.Local.RunScript;
-            var triggers = _appTriggers.GetValueOrDefault(a.Id) ?? [];
-            return new JsonObject
+            return new JsonObject // v2: triggers live on handlers[]
             {
                 ["id"] = a.Id, ["name"] = a.Name, ["kind"] = a.Kind, ["azureResource"] = a.AzureResource, ["cloudRoleName"] = a.AzureResource,
                 ["local"] = local,
-                ["triggers"] = triggers,
             };
         }
 

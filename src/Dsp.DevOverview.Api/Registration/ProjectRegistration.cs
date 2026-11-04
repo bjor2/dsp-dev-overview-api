@@ -13,7 +13,12 @@ public sealed class ProjectRegistration
     public string Project { get; set; } = "";
     public string Env { get; set; } = "";
     public DateTimeOffset GeneratedAt { get; set; }
+    /// <summary>ADDENDA-008: 2 after load (v1 files are upgraded in memory, see <see cref="UpgradeNotes"/>).</summary>
+    public int SchemaVersion { get; set; } = 2;
+    /// <summary>Apps stay as resources (attach/run/logs/cloudRoleName); they are no longer Flow nodes.</summary>
     public List<RegisteredApp> Apps { get; set; } = new();
+    public List<RegisteredContainer> Containers { get; set; } = new();
+    public List<RegisteredHandler> Handlers { get; set; } = new();
     public List<RegisteredEntity> Entities { get; set; } = new();
     public List<RegisteredEdge> Edges { get; set; } = new();
     public RegisteredSamples? Samples { get; set; }
@@ -21,6 +26,8 @@ public sealed class ProjectRegistration
     public RegisteredObservability? Observability { get; set; }
 
     [JsonIgnore] public string SourcePath { get; set; } = "";
+    /// <summary>Set when the file was schema v1 and upgraded in memory (surfaced as a Flow warning).</summary>
+    [JsonIgnore] public IReadOnlyList<string> UpgradeNotes { get; set; } = [];
 
     public RegisteredEntity? FindEntity(string entityId) => Entities.FirstOrDefault(e => e.Id == entityId);
 }
@@ -32,6 +39,45 @@ public sealed class RegisteredApp
     public string Kind { get; set; } = "";
     public string? CloudRoleName { get; set; }
     public RegisteredAppLocal? Local { get; set; }
+}
+
+/// <summary>ADDENDA-008 container: a labelled box around handler nodes; never an edge endpoint.</summary>
+public sealed class RegisteredContainer
+{
+    public string Id { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Kind { get; set; } = "resource";   // resource | logical
+    public List<string> ResourceRefs { get; set; } = new();
+    public string? Scope { get; set; }
+}
+
+/// <summary>ADDENDA-008 handler node: one [Function] + trigger, or a web app's HTTP surface.</summary>
+public sealed class RegisteredHandler
+{
+    public string Id { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string AppId { get; set; } = "";
+    public string ContainerId { get; set; } = "";
+    public string? Scope { get; set; }
+    public List<RegisteredTrigger> Triggers { get; set; } = new();
+    public List<RegisteredSelfRequeue> SelfRequeue { get; set; } = new();
+}
+
+public sealed class RegisteredTrigger
+{
+    public string Kind { get; set; } = "";
+    public string? Function { get; set; }
+    public string? EntityId { get; set; }
+    public string? Setting { get; set; }
+    public string? Connection { get; set; }
+    public string? SourceFile { get; set; }
+}
+
+public sealed class RegisteredSelfRequeue
+{
+    public string EntityId { get; set; } = "";
+    public List<string> Messages { get; set; } = new();
+    public List<string> Sources { get; set; } = new();
 }
 
 public sealed class RegisteredAppLocal
@@ -78,6 +124,8 @@ public sealed class RegisteredEdge
     public string? Label { get; set; }
     public string? Scope { get; set; }
     public string? Confidence { get; set; }
+    /// <summary>file:line of the send calls (code-attributed edges).</summary>
+    public List<string>? Sources { get; set; }
 }
 
 public sealed class RegisteredSamples

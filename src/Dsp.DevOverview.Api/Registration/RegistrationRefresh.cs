@@ -86,7 +86,7 @@ public sealed class RegistrationRefreshService(
         }
         if (!result.IsValid)
             throw new ApiException(StatusCodes.Status422UnprocessableEntity, "REGISTRATION_INVALID",
-                "Generated registration fails registration.schema.json (nothing written): " + string.Join("; ", result.SchemaErrors.Take(5)));
+                "Generated registration is invalid (nothing written): " + string.Join("; ", result.SchemaErrors.Concat(result.Issues.Select(i => i.ToString())).Take(5)));
 
         string? backup = null;
         if (!dryRun)

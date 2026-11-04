@@ -45,11 +45,13 @@ public sealed class SbGateway : IAsyncDisposable
     private readonly Lazy<ServiceBusAdministrationClient?> _admin;
     private readonly ConcurrentDictionary<string, ServiceBusSender> _senders = new();
     private DateTime _adminUnavailableUntil = DateTime.MinValue;
+    private readonly SbCountReader _counts;
 
     public SbGateway(ServiceBusOptions options, ILogger<SbGateway> log)
     {
         _options = options;
         _log = log;
+        _counts = new SbCountReader(options, log);
         _client = new(() => CreateClient(_options, Credential));
         _admin = new(CreateAdmin);
     }
@@ -114,9 +116,18 @@ public sealed class SbGateway : IAsyncDisposable
 
     // ---------- depth ----------
 
-    public async Task<EntityCounts> GetCountsAsync(RegisteredEntity entity, ProjectRegistration registration, CancellationToken ct)
+    /// <summary>Depth of one entity: bounded, shared for a few seconds, unknown (null) on timeout or a missing entity.</summary>
+    public Task<EntityCounts> GetCountsAsync(RegisteredEntity entity, ProjectRegistration registration, CancellationToken ct) =>
+        entity.Kind == "topic"
+            ? Task.FromResult(new EntityCounts(null, null, "n/a")) // depths live on subscriptions / forward queues
+            : _counts.CountsAsync($"{registration.Id}|{entity.Id}", c => ReadCountsAsync(entity, registration, c), ct);
+
+    /// <summary>Depths for many entities in parallel (<see cref="ServiceBusOptions.CountParallelism"/>), in input order.</summary>
+    public Task<IReadOnlyList<EntityCounts>> GetCountsAsync(IReadOnlyList<RegisteredEntity> entities, ProjectRegistration registration, CancellationToken ct) =>
+        SbCountReader.ForAllAsync(entities, _options.CountParallelism, (e, c) => GetCountsAsync(e, registration, c), ct);
+
+    private async Task<EntityCounts> ReadCountsAsync(RegisteredEntity entity, ProjectRegistration registration, CancellationToken ct)
     {
-        if (entity.Kind == "topic") return new(null, null, "n/a"); // depths live on subscriptions / forward queues
         var admin = _options.AdminCountsEnabled && DateTime.UtcNow >= _adminUnavailableUntil ? _admin.Value : null;
         if (admin is not null)
         {
@@ -131,14 +142,25 @@ public sealed class SbGateway : IAsyncDisposable
                 var s = (await admin.GetSubscriptionRuntimePropertiesAsync(topic, sub, ct)).Value;
                 return new(s.ActiveMessageCount, s.DeadLetterMessageCount, "admin");
             }
+            catch (Exception ex) when (SbCountReader.IsNotFound(ex))
+            {
+                // One missing entity must not switch every other entity to (slower) peek counts.
+                _counts.MarkMissing(CountKey(entity, SubQueue.None), ex);
+                _counts.MarkMissing(CountKey(entity, SubQueue.DeadLetter), ex);
+                return new(null, null, "missing");
+            }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 _adminUnavailableUntil = DateTime.UtcNow + AdminRetryAfter;
                 _log.LogWarning("Admin runtime properties failed for {Entity}, falling back to peek counts: {Message}", entity.Id, FirstLine(ex.Message));
             }
         }
-        return new(await PeekCountAsync(entity, registration, SubQueue.None, ct), await PeekCountAsync(entity, registration, SubQueue.DeadLetter, ct), "peek");
+        var active = _counts.CountAsync(CountKey(entity, SubQueue.None), c => PeekCountAsync(entity, registration, SubQueue.None, c), ct);
+        var dead = _counts.CountAsync(CountKey(entity, SubQueue.DeadLetter), c => PeekCountAsync(entity, registration, SubQueue.DeadLetter, c), ct);
+        return new(await active, await dead, "peek");
     }
+
+    private string CountKey(RegisteredEntity entity, SubQueue subQueue) => $"{Name(entity)}|{subQueue}";
 
     private async Task<long?> PeekCountAsync(RegisteredEntity entity, ProjectRegistration registration, SubQueue subQueue, CancellationToken ct)
     {
@@ -162,6 +184,10 @@ public sealed class SbGateway : IAsyncDisposable
         {
             return null; // auto-forwarding entities cannot be browsed; depth lives on the forward queue
         }
+        catch (Exception ex) when (SbCountReader.IsNotFound(ex) || (ex is OperationCanceledException && ct.IsCancellationRequested))
+        {
+            throw; // SbCountReader: negative cache / budget
+        }
         catch (Exception ex)
         {
             _log.LogWarning("Peek count failed for {Entity} ({SubQueue}): {Message}", entity.Id, subQueue, FirstLine(ex.Message));
@@ -172,11 +198,26 @@ public sealed class SbGateway : IAsyncDisposable
     /// <summary>Cheap reachability probe: peek one message from a queue.</summary>
     public async Task<bool> IsReachableAsync(RegisteredEntity probe, ProjectRegistration registration, CancellationToken ct)
     {
-        try
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(TimeSpan.FromSeconds(Math.Max(0.1, _options.ProbeTimeoutSeconds)));
+        async Task Peek(CancellationToken c)
         {
             await using var receiver = CreateReceiver(probe, registration, SubQueue.None, ServiceBusReceiveMode.PeekLock);
-            await receiver.PeekMessageAsync(cancellationToken: ct);
+            await receiver.PeekMessageAsync(cancellationToken: c);
+        }
+        try
+        {
+            await Peek(budget.Token).WaitAsync(budget.Token); // link close happens in the background after a timeout
             return true;
+        }
+        catch (Exception ex) when (SbCountReader.IsNotFound(ex))
+        {
+            return true; // the namespace answered; only this entity is missing
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _log.LogWarning("Service Bus probe exceeded {Seconds}s; treated as unreachable.", _options.ProbeTimeoutSeconds);
+            return false;
         }
         catch (Exception ex) when (IsAuthFailure(ex))
         {

@@ -2,7 +2,8 @@
  "id": "customerproject.dev",
  "project": "customerproject",
  "env": "dev",
- "generatedAt": "2026-11-02T14:45:06+01:00",
+ "schemaVersion": 2,
+ "generatedAt": "2026-11-04T09:55:08+01:00",
  "sources": [
   {
    "kind": "terraform",
@@ -61,7 +62,6 @@
     "url": "https://localhost:5011/swagger",
     "runScript": "/workspace/dsp/local-dev/customerproject/run-api.linux.ps1"
    },
-   "triggers": [],
    "namingNote": "Seen in /workspace/dsp docs; cloudRoleName = site name (Functions/App Service default) — confirm in AI."
   },
   {
@@ -74,22 +74,6 @@
     "port": 7239,
     "runScript": "/workspace/dsp/local-dev/customerproject/run-functions.linux.ps1"
    },
-   "triggers": [
-    {
-     "function": "CustomerProjectQueueHandler",
-     "entityId": "q:customerproject",
-     "setting": "ServiceBusCustomerProjectQueue",
-     "connection": "ServiceBusConnectionString",
-     "sourceFile": "src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs"
-    },
-    {
-     "function": "CustomerProjectDomainQueueHandler",
-     "entityId": "q:customerproject-domain",
-     "setting": "ServiceBusCustomerProjectDomainQueue",
-     "connection": "ServiceBusConnectionString",
-     "sourceFile": "src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs"
-    }
-   ],
    "namingNote": "Seen in /workspace/dsp docs; cloudRoleName = site name (Functions/App Service default) — confirm in AI."
   },
   {
@@ -102,23 +86,135 @@
     "port": 7240,
     "runScript": "/workspace/dsp/local-dev/customerproject/run-ingress.linux.ps1"
    },
+   "namingNote": "UNCONFIRMED: name built by external dahl-app module v2.1.8 (app_name=customerproject-ingress, short=custprin). Confirm via az / AI distinct cloud_RoleName."
+  }
+ ],
+ "containers": [
+  {
+   "id": "container:customerproject.api",
+   "label": "Api :5011",
+   "kind": "resource",
+   "resourceRefs": [
+    "app:api"
+   ]
+  },
+  {
+   "id": "container:customerproject.func-app",
+   "label": "Functions :7239",
+   "kind": "resource",
+   "resourceRefs": [
+    "app:functions"
+   ]
+  },
+  {
+   "id": "container:customerproject.ingress-app",
+   "label": "Ingress :7240",
+   "kind": "resource",
+   "resourceRefs": [
+    "app:ingress"
+   ]
+  }
+ ],
+ "handlers": [
+  {
+   "id": "customerproject.api.http",
+   "label": "HTTP controllers",
+   "appId": "app:api",
+   "containerId": "container:customerproject.api",
    "triggers": [
     {
+     "kind": "http",
+     "sourceFile": "src/Dahl.CustomerProject.Api"
+    }
+   ]
+  },
+  {
+   "id": "customerproject.fn.domain",
+   "label": "DOMAIN",
+   "appId": "app:functions",
+   "containerId": "container:customerproject.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "CustomerProjectDomainQueueHandler",
+     "entityId": "q:customerproject-domain",
+     "setting": "ServiceBusCustomerProjectDomainQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs"
+    }
+   ]
+  },
+  {
+   "id": "customerproject.fn.commands",
+   "label": "COMMANDS",
+   "appId": "app:functions",
+   "containerId": "container:customerproject.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "CustomerProjectQueueHandler",
+     "entityId": "q:customerproject",
+     "setting": "ServiceBusCustomerProjectQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs"
+    }
+   ],
+   "selfRequeue": [
+    {
+     "entityId": "q:customerproject",
+     "messages": [
+      "CreateProjectsFromErpReferences",
+      "HandleCustomerAddressChanged",
+      "PopulateOrderReferences",
+      "SendNotification",
+      "ValidateOrder"
+     ],
+     "sources": [
+      "src/Dahl.CustomerProject.Application/Features/Notification/OrderDeliveredHandler.cs:34",
+      "src/Dahl.CustomerProject.Application/Features/Notification/OrderReferenceChangedHandler.cs:26",
+      "src/Dahl.CustomerProject.Application/Features/Notification/ValidateOrderHandler.cs:81",
+      "src/Dahl.CustomerProject.Application/Features/Notification/ValidateOrderHandler.cs:90",
+      "src/Dahl.CustomerProject.Application/Features/OrderAssociation/ImportOrderReferences.cs:53",
+      "src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs:51",
+      "src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateMissingProjectsHandler.cs:59",
+      "src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs:64",
+      "src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/SyncProjectDatesHandler.cs:52"
+     ],
+     "generated": true
+    }
+   ]
+  },
+  {
+   "id": "customerproject.fn.ingress",
+   "label": "INGRESS",
+   "appId": "app:ingress",
+   "containerId": "container:customerproject.ingress-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
      "function": "IngressQueueHandler",
      "entityId": "q:customerproject-ingress",
      "setting": "ServiceBusCustomerProjectIngressQueue",
      "connection": "ServiceBusNamespace",
      "sourceFile": "src/Dahl.CustomerProject.Ingress.Functions/Functions/IngressQueueHandler.cs"
-    },
+    }
+   ]
+  },
+  {
+   "id": "customerproject.fn.snapshot",
+   "label": "SNAPSHOT",
+   "appId": "app:ingress",
+   "containerId": "container:customerproject.ingress-app",
+   "triggers": [
     {
+     "kind": "servicebus",
      "function": "SnapshotQueueHandler",
      "entityId": "q:customerproject-snapshot",
      "setting": "ServiceBusCustomerProjectSnapshotQueue",
      "connection": "ServiceBusNamespace",
      "sourceFile": "src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs"
     }
-   ],
-   "namingNote": "UNCONFIRMED: name built by external dahl-app module v2.1.8 (app_name=customerproject-ingress, short=custprin). Confirm via az / AI distinct cloud_RoleName."
+   ]
   }
  ],
  "entities": [
@@ -217,7 +313,7 @@
  "edges": [
   {
    "from": "q:customerproject-domain",
-   "to": "app:functions",
+   "to": "customerproject.fn.domain",
    "kind": "trigger",
    "label": "CustomerProjectDomainQueueHandler",
    "scope": "both",
@@ -225,7 +321,7 @@
   },
   {
    "from": "q:customerproject",
-   "to": "app:functions",
+   "to": "customerproject.fn.commands",
    "kind": "trigger",
    "label": "CustomerProjectQueueHandler",
    "scope": "both",
@@ -233,7 +329,7 @@
   },
   {
    "from": "q:customerproject-ingress",
-   "to": "app:ingress",
+   "to": "customerproject.fn.ingress",
    "kind": "trigger",
    "label": "IngressQueueHandler",
    "scope": "both",
@@ -241,63 +337,114 @@
   },
   {
    "from": "q:customerproject-snapshot",
-   "to": "app:ingress",
+   "to": "customerproject.fn.snapshot",
    "kind": "trigger",
    "label": "SnapshotQueueHandler",
    "scope": "both",
    "confidence": "code"
   },
   {
-   "from": "app:api",
+   "from": "customerproject.api.http",
    "to": "q:customerproject",
    "kind": "publish",
-   "label": "commands",
    "scope": "both",
-   "confidence": "inferred-from-settings"
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs:238",
+    "src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs:253",
+    "src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs:272",
+    "src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs:292",
+    "src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs:306",
+    "src/Dahl.CustomerProject.Api/V1/Controllers/ImageController.cs:134",
+    "src/Dahl.CustomerProject.Api/V1/Controllers/OrderAssociationController.cs:119",
+    "src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs:227"
+   ],
+   "messages": [
+    "CreateMissingProjects",
+    "ImportImage",
+    "ImportOrderReferencesForProjects",
+    "PopulateOrderReferences",
+    "SyncProjectDates"
+   ],
+   "label": "commands"
   },
   {
-   "from": "app:api",
-   "to": "q:customerproject-ingress",
-   "kind": "publish",
-   "scope": "both",
-   "confidence": "inferred-from-settings"
-  },
-  {
-   "from": "app:api",
+   "from": "customerproject.api.http",
    "to": "t:customerproject-topic",
    "kind": "publish",
    "scope": "both",
-   "confidence": "inferred-from-settings"
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.CustomerProject.Application/Features/OrderAssociation/ManualAssociationService.cs:126",
+    "src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs:222"
+   ],
+   "messages": [
+    "CustomerProjectOrderReferenceChanged"
+   ]
   },
   {
-   "from": "app:functions",
+   "from": "customerproject.fn.domain",
+   "to": "q:customerproject",
+   "kind": "publish",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs:60",
+    "src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs:69"
+   ]
+  },
+  {
+   "from": "customerproject.fn.commands",
    "to": "t:customerproject-topic",
    "kind": "publish",
-   "label": "PCO events",
    "scope": "both",
-   "confidence": "inferred-from-settings"
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.CustomerProject.Application/Features/OrderAssociation/ImportOrderReferences.cs:176",
+    "src/Dahl.CustomerProject.Application/Features/OrderAssociation/OrderAddressIdChangedHandler.cs:127",
+    "src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs:89",
+    "src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs:68"
+   ],
+   "messages": [
+    "CustomerProjectOrderReferenceChanged"
+   ],
+   "label": "PCO events"
   },
   {
-   "from": "app:functions",
+   "from": "customerproject.fn.commands",
    "to": "q:communication",
    "kind": "publish",
-   "label": "notifications",
    "scope": "both",
-   "confidence": "inferred-from-settings"
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.CustomerProject.Integrations.Communication/NotificationSender.cs:64 → src/Dahl.CustomerProject.Integrations.Communication/Client/CommunicationQueueClient.cs:43"
+   ],
+   "label": "notifications"
   },
   {
-   "from": "app:ingress",
+   "from": "customerproject.fn.ingress",
    "to": "q:customerproject-snapshot",
    "kind": "publish",
    "scope": "both",
-   "confidence": "inferred-from-settings"
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.CustomerProject.Ingress.Application/Import/ChangeEventHandlerBase.cs:52"
+   ]
   },
   {
-   "from": "app:ingress",
+   "from": "customerproject.fn.snapshot",
    "to": "q:customerproject-domain",
    "kind": "publish",
    "scope": "both",
-   "confidence": "inferred-from-settings"
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerAddressChangedHandler.cs:28",
+    "src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerChangedHandler.cs:28",
+    "src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerEmailChangedHandler.cs:28",
+    "src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnCustomerAgreementHeadChangedHandler.cs:28",
+    "src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnHeaderFileChangedHandler.cs:28",
+    "src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnQuotationOrderHeadChangedHandler.cs:28"
+   ]
   },
   {
    "from": "t:customerproject-topic",
@@ -383,7 +530,20 @@
   "commandsVia": "ICustomerProjectQueueClient (QueueClientBase) — see ADDENDA-001"
  },
  "overrides": {
-  "note": "local-inspect + customerproject-topic-inspect are local-only (Config.json), not in Terraform. Cloud-only inbound subs (price, erpeventpublisher, orderhistory, order -> customerproject; int-m3cloud-* -> customerproject-ingress; customerproject -> eventpointsink-ingress-2) to be added by generator with scope=cloud."
+  "note": "local-inspect + customerproject-topic-inspect are local-only (Config.json), not in Terraform. Cloud-only inbound subs (price, erpeventpublisher, orderhistory, order -> customerproject; int-m3cloud-* -> customerproject-ingress; customerproject -> eventpointsink-ingress-2) to be added by generator with scope=cloud.",
+  "handlerIds": {
+   "CustomerProjectQueueHandler": "customerproject.fn.commands"
+  },
+  "handlerLabels": {
+   "customerproject.fn.ingress": "INGRESS",
+   "customerproject.fn.snapshot": "SNAPSHOT",
+   "customerproject.fn.domain": "DOMAIN",
+   "customerproject.fn.commands": "COMMANDS",
+   "customerproject.api.http": "HTTP controllers"
+  },
+  "logicalContainers": [],
+  "allowBidirectional": [],
+  "handlersNote": "ADDENDA-008: handlerIds/handlerLabels feed handlers[]; logicalContainers[] = multi-resource DOMAIN case (none today); allowBidirectional[{entity,node}] = I-1 escape hatch, keep empty."
  },
  "naming": {
   "formula": {

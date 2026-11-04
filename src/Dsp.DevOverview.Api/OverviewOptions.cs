@@ -58,6 +58,17 @@ public sealed class ServiceBusOptions
 
     public bool AdminCountsEnabled => UseAdminCounts ?? !IsEmulator;
 
+    /// <summary>Budget for one entity's depth read (active + DLQ in parallel). Over budget = unknown (null), never a hang.</summary>
+    public double CountTimeoutSeconds { get; set; } = 3;
+    /// <summary>Budget for the reachability probe; over budget = unreachable.</summary>
+    public double ProbeTimeoutSeconds { get; set; } = 3;
+    /// <summary>MessagingEntityNotFound is remembered this long (e.g. emulator-only entities on a developer namespace).</summary>
+    public double MissingEntityCacheSeconds { get; set; } = 300;
+    /// <summary>Depth reads are shared between /flow, /sb/entities and /projects for this long.</summary>
+    public double CountsCacheSeconds { get; set; } = 3;
+    /// <summary>Entities read in parallel per request.</summary>
+    public int CountParallelism { get; set; } = 8;
+
     /// <summary>
     /// e.g. sb-bjoo-local-noe-dahl-shared.servicebus.windows.net. When set (and ConnectionString empty) the clients use
     /// DefaultAzureCredential (az login / VS / env / managed identity) instead of a SAS connection string.
