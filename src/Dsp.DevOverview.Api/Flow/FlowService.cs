@@ -29,8 +29,27 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
             stored = new Dictionary<string, FlowPosition>();
         }
 
-        return FlowGraphBuilder.Build(p.Registration, view, dir, SbScope, depths, stored, warnings,
-            appId => console.IsManagedRunning(p.Id, appId));
+        // Checked-in layoutDefaults (survive Render redeploys) ← runtime positions, per key.
+        var (effective, sources) = FlowGraphBuilder.EffectivePositions(p.Registration, stored);
+        return FlowGraphBuilder.Build(p.Registration, view, dir, SbScope, depths, effective, warnings,
+            appId => console.IsManagedRunning(p.Id, appId), sources);
+    }
+
+    /// <summary>
+    /// GET /api/projects/{id}/flow/positions/export: the effective merged map (defaults ← runtime) in registration
+    /// <c>layoutDefaults</c> shape, keys sorted, whole pixels. tools/Generate-Registration export-layout writes it back.
+    /// </summary>
+    public FlowLayoutExport Export(string id)
+    {
+        var p = overview.Project(id);
+        IReadOnlyDictionary<string, FlowPosition> stored;
+        try { stored = positions.Load(p.Id, FlowPositionContext.For(p.Registration)); }
+        catch (Exception ex) when (ex is JsonException or IOException) { stored = new Dictionary<string, FlowPosition>(); }
+        var (effective, sources) = FlowGraphBuilder.EffectivePositions(p.Registration, stored);
+        var map = new SortedDictionary<string, FlowExportPoint>(StringComparer.Ordinal);
+        foreach (var (key, pos) in effective)
+            map[key] = new FlowExportPoint(Math.Round(pos.X, MidpointRounding.AwayFromZero), Math.Round(pos.Y, MidpointRounding.AwayFromZero));
+        return new FlowLayoutExport(p.Id, map, sources.Count(s => s.Value == "stored"), sources.Count(s => s.Value == "default"));
     }
 
     /// <summary>
@@ -100,3 +119,8 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
         return await positions.MergeAsync(p.Id, updates, ctx, ct);
     }
 }
+
+public sealed record FlowExportPoint(double X, double Y);
+
+/// <summary>Export payload: <c>positions</c> is exactly registration <c>layoutDefaults.positions</c>; the rest is informational.</summary>
+public sealed record FlowLayoutExport(string ProjectId, IReadOnlyDictionary<string, FlowExportPoint> Positions, int FromStored, int FromDefaults);

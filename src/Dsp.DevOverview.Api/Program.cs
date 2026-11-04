@@ -77,6 +77,7 @@ api.MapGet("/projects", (OverviewService s, CancellationToken ct) => s.ProjectsA
 
 api.MapGet("/projects/{id}/flow", (string id, string? scope, string? direction, FlowService s, CancellationToken ct) => s.GraphAsync(id, scope, direction, ct));
 
+api.MapGet("/projects/{id}/flow/positions/export", (string id, FlowService s) => s.Export(id));
 api.MapPut("/projects/{id}/flow/positions", (string id, Dictionary<string, FlowPositionInput>? body, FlowService s, CancellationToken ct) => s.SavePositionsAsync(id, body, ct));
 
 api.MapGet("/projects/{id}/samples", (string id, OverviewService s) => s.Samples(id));

@@ -67,6 +67,7 @@ public static class RegistrationGenerator
         var merged = Merge(current, generated);
         ApplyOverrides(merged);
         var issues = RegistrationValidator.Apply(merged); // I-1: code self-sends → selfRequeue badges
+        gaps.AddRange(LayoutDefaults.Warnings(merged));     // layoutDefaults is hand/export-owned: kept verbatim, unknown ids only warned
         var errors = File.Exists(inputs.SchemaPath)
             ? RegistrationSchema.Load(inputs.SchemaPath).Validate(merged)
             : [$"schema not found: {inputs.SchemaPath}"];
@@ -83,7 +84,7 @@ public static class RegistrationGenerator
     private static readonly string[] EdgeOwned = ["from", "to", "kind", "scope", "confidence", "sources", "messages"];
     private static readonly string[] ContainerOwned = ["id", "label", "kind", "resourceRefs", "scope"];
     private static readonly string[] HandlerOwned = ["id", "label", "appId", "containerId", "scope", "triggers", "selfRequeue"];
-    private static readonly string[] KeyOrder = ["id", "project", "env", "schemaVersion", "generatedAt", "sources", "apps", "containers", "handlers", "entities", "edges"];
+    private static readonly string[] KeyOrder = ["id", "project", "env", "schemaVersion", "generatedAt", "sources", "apps", "containers", "handlers", "entities", "edges", "layoutDefaults"];
     private static readonly string[] SamplesOwned = ["catalog", "source"];
 
     public static string EdgeKey(JsonNode? e) => $"{e?["from"]}|{e?["to"]}|{e?["kind"]}";

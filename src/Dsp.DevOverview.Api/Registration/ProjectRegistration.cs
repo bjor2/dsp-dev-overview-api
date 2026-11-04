@@ -21,6 +21,8 @@ public sealed class ProjectRegistration
     public List<RegisteredHandler> Handlers { get; set; } = new();
     public List<RegisteredEntity> Entities { get; set; } = new();
     public List<RegisteredEdge> Edges { get; set; } = new();
+    /// <summary>Checked-in default Flow layout (graph ids; runtime positions override per key). Optional.</summary>
+    public RegisteredLayoutDefaults? LayoutDefaults { get; set; }
     public RegisteredSamples? Samples { get; set; }
     /// <summary>Slice 5: App Insights target (ADR-004). Optional in the schema.</summary>
     public RegisteredObservability? Observability { get; set; }
@@ -28,6 +30,8 @@ public sealed class ProjectRegistration
     [JsonIgnore] public string SourcePath { get; set; } = "";
     /// <summary>Set when the file was schema v1 and upgraded in memory (surfaced as a Flow warning).</summary>
     [JsonIgnore] public IReadOnlyList<string> UpgradeNotes { get; set; } = [];
+    /// <summary>layoutDefaults ids that are not in the registration (ignored; surfaced as Flow warnings).</summary>
+    [JsonIgnore] public IReadOnlyList<string> LayoutWarnings { get; set; } = [];
 
     public RegisteredEntity? FindEntity(string entityId) => Entities.FirstOrDefault(e => e.Id == entityId);
 }
@@ -78,6 +82,18 @@ public sealed class RegisteredSelfRequeue
     public string EntityId { get; set; } = "";
     public List<string> Messages { get; set; } = new();
     public List<string> Sources { get; set; } = new();
+}
+
+public sealed class RegisteredLayoutDefaults
+{
+    public Dictionary<string, RegisteredPoint> Positions { get; set; } = new(StringComparer.Ordinal);
+    public string? Note { get; set; }
+}
+
+public sealed class RegisteredPoint
+{
+    public double X { get; set; }
+    public double Y { get; set; }
 }
 
 public sealed class RegisteredAppLocal

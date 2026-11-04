@@ -4,9 +4,12 @@ namespace Dsp.DevOverview.RegistrationGenerator;
 public static class RegistrationWriter
 {
     /// <returns>The backup path, or null when there was no previous file or nothing changed.</returns>
-    public static string? Write(string path, GenerationResult result, string historyDir, DateTimeOffset now)
+    public static string? Write(string path, GenerationResult result, string historyDir, DateTimeOffset now) =>
+        WriteJson(path, result.ToJson(), result.Record["id"]!.ToString(), historyDir, now);
+
+    /// <summary>Same backup + atomic replace for any serialized record (export-layout).</summary>
+    public static string? WriteJson(string path, string json, string id, string historyDir, DateTimeOffset now)
     {
-        var json = result.ToJson();
         var full = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         string? backup = null;
@@ -14,7 +17,7 @@ public static class RegistrationWriter
         {
             if (File.ReadAllText(full) == json) return null;
             Directory.CreateDirectory(historyDir);
-            backup = Path.Combine(historyDir, $"{result.Record["id"]}-{now:yyyyMMdd-HHmmss}.json");
+            backup = Path.Combine(historyDir, $"{id}-{now:yyyyMMdd-HHmmss}.json");
             File.Copy(full, backup, overwrite: true);
         }
         var tmp = full + ".tmp";

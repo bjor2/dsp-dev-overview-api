@@ -480,6 +480,35 @@
     },
     "overrides": {
       "type": "object"
+    },
+    "layoutDefaults": {
+      "description": "Checked-in default Flow layout (option C, Render has an ephemeral disk). Graph ids: containers absolute, handler nodes relative to their container, entities/ext absolute. Runtime positions (data/flow-positions) override per key. Unknown ids are a warning and ignored. Written by tools/Generate-Registration export-layout; preserved by regeneration.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "positions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      }
     }
   },
   "allOf": [

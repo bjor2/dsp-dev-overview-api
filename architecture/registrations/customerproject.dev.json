@@ -3,7 +3,7 @@
  "project": "customerproject",
  "env": "dev",
  "schemaVersion": 2,
- "generatedAt": "2026-11-04T09:55:08+01:00",
+ "generatedAt": "2026-11-04T10:43:18+01:00",
  "sources": [
   {
    "kind": "terraform",
@@ -492,6 +492,83 @@
    "confidence": "manual"
   }
  ],
+ "layoutDefaults": {
+  "note": "Default Flow layout (ADDENDA-008 §8, LR). Containers absolute, handler nodes relative to their container, entities/ext absolute. Runtime positions override per key. Refresh with scripts/export-flow-layout.sh.",
+  "positions": {
+   "container:customerproject.api": {
+    "x": 1200,
+    "y": 440
+   },
+   "container:customerproject.func-app": {
+    "x": 960,
+    "y": 216
+   },
+   "container:customerproject.ingress-app": {
+    "x": 480,
+    "y": 120
+   },
+   "customerproject.api.http": {
+    "x": 16,
+    "y": 40
+   },
+   "customerproject.fn.commands": {
+    "x": 16,
+    "y": 136
+   },
+   "customerproject.fn.domain": {
+    "x": 16,
+    "y": 40
+   },
+   "customerproject.fn.ingress": {
+    "x": 16,
+    "y": 40
+   },
+   "customerproject.fn.snapshot": {
+    "x": 16,
+    "y": 136
+   },
+   "ext:seed-messages": {
+    "x": 0,
+    "y": 160
+   },
+   "q:communication": {
+    "x": 1440,
+    "y": 400
+   },
+   "q:customerproject": {
+    "x": 1200,
+    "y": 304
+   },
+   "q:customerproject-domain": {
+    "x": 720,
+    "y": 256
+   },
+   "q:customerproject-ingress": {
+    "x": 240,
+    "y": 160
+   },
+   "q:customerproject-snapshot": {
+    "x": 720,
+    "y": 160
+   },
+   "q:customerproject-topic-inspect": {
+    "x": 1920,
+    "y": 240
+   },
+   "s:customerproject-topic/customerproject-to-customerproject": {
+    "x": 1680,
+    "y": 352
+   },
+   "s:customerproject-topic/local-inspect": {
+    "x": 1680,
+    "y": 240
+   },
+   "t:customerproject-topic": {
+    "x": 1440,
+    "y": 304
+   }
+  }
+ },
  "observability": {
   "appInsights": {
    "resource": "appin-870-dev-euw-dahl-shared",

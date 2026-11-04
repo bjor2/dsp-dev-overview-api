@@ -41,7 +41,8 @@ public sealed record FlowNode(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowSbInfo? Sb,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowPosition? Position,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ContainerId = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowHandlerInfo? Handler = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowHandlerInfo? Handler = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PositionSource = null);
 
 /// <summary>Labelled box around handler nodes (layout/grouping only; edges never target it). Position absolute.</summary>
 public sealed record FlowContainer(
@@ -49,7 +50,8 @@ public sealed record FlowContainer(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowAppInfo? App,
     string Scope,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowPosition? Position,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowSize? Size = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowSize? Size = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PositionSource = null);
 
 public sealed record FlowEdge(
     string Id, string From, string To, string Kind,
@@ -61,7 +63,8 @@ public sealed record FlowLayoutHints(int ContainerPadding, string InnerDirection
 
 /// <summary>
 /// FlowGraph v2 + <c>warnings</c> (e.g. Service Bus unreachable → depths null); the graph itself never fails on SB.
-/// layout: auto (nothing stored) | partial (some nodes/containers stored: pin those, auto-lay the rest) | stored (all).
+/// layout: auto (no position) | partial (some nodes/containers positioned: pin those, auto-lay the rest) | stored (all), counting
+/// both layers: registration layoutDefaults (base) and runtime positions (override). <c>positionSource</c> = "default" | "stored".
 /// </summary>
 public sealed record FlowGraph(
     string ProjectId, int SchemaVersion, string Layout, string Direction, FlowLayoutHints LayoutHints,
@@ -102,6 +105,23 @@ public static class FlowGraphBuilder
         return g.Nodes.Select(n => n.Id).Concat(g.Containers.Select(c => c.Id)).ToHashSet();
     }
 
+    /// <summary>
+    /// Effective positions: registration <c>layoutDefaults</c> (base, unknown ids dropped) ← runtime store (override), per key,
+    /// with the source of each ("default" | "stored").
+    /// </summary>
+    public static (Dictionary<string, FlowPosition> Positions, Dictionary<string, string> Sources) EffectivePositions(
+        ProjectRegistration r, IReadOnlyDictionary<string, FlowPosition> stored)
+    {
+        var known = AllNodeIds(r);
+        var positions = new Dictionary<string, FlowPosition>(StringComparer.Ordinal);
+        var sources = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (id, p) in r.LayoutDefaults?.Positions ?? [])
+            if (known.Contains(id) && double.IsFinite(p.X) && double.IsFinite(p.Y)) { positions[id] = new FlowPosition(p.X, p.Y); sources[id] = "default"; }
+        foreach (var (id, p) in stored)
+            if (known.Contains(id)) { positions[id] = p; sources[id] = "stored"; }
+        return (positions, sources);
+    }
+
     /// <summary>Handler id → container id: inner positions are relative to that container (FlowPositionStore keeps the parent).</summary>
     public static IReadOnlyDictionary<string, string> Parents(ProjectRegistration r) =>
         r.Handlers.ToDictionary(h => h.Id, h => h.ContainerId);
@@ -109,8 +129,9 @@ public static class FlowGraphBuilder
     public static FlowGraph Build(
         ProjectRegistration r, FlowScope view, string direction, SbScope sbScope,
         IReadOnlyDictionary<string, EntityCounts> depths, IReadOnlyDictionary<string, FlowPosition> positions,
-        IReadOnlyList<string> warnings, Func<string, bool>? attached = null)
+        IReadOnlyList<string> warnings, Func<string, bool>? attached = null, IReadOnlyDictionary<string, string>? positionSources = null)
     {
+        string? Source(string id) => positionSources?.GetValueOrDefault(id);
         var containers = new List<FlowContainer>();
         foreach (var c in r.Containers)
         {
@@ -151,12 +172,12 @@ public static class FlowGraphBuilder
         }
 
         var visibleContainers = containers.Where(c => IsVisible(c.Scope, view))
-            .Select(c => positions.TryGetValue(c.Id, out var p) ? c with { Position = p } : c)
+            .Select(c => positions.TryGetValue(c.Id, out var p) ? c with { Position = p, PositionSource = Source(c.Id) } : c)
             .ToList();
         var shownContainers = visibleContainers.Select(c => c.Id).ToHashSet();
         var visible = nodes.Where(n => IsVisible(n.Scope, view))
             .Select(n => n.ContainerId is { } cid && !shownContainers.Contains(cid) ? n with { ContainerId = null } : n)
-            .Select(n => positions.TryGetValue(n.Id, out var p) ? n with { Position = p } : n)
+            .Select(n => positions.TryGetValue(n.Id, out var p) ? n with { Position = p, PositionSource = Source(n.Id) } : n)
             .ToList();
         var visibleIds = visible.Select(n => n.Id).ToHashSet();
 
@@ -170,7 +191,8 @@ public static class FlowGraphBuilder
         var placed = visible.Count(n => n.Position is not null) + visibleContainers.Count(c => c.Position is not null);
         var total = visible.Count + visibleContainers.Count;
         var layout = placed == 0 ? "auto" : placed == total ? "stored" : "partial";
-        var notes = r.UpgradeNotes.Count == 0 ? warnings : [.. warnings, .. r.UpgradeNotes.Select(n => $"REGISTRATION_V1_UPGRADED: {n}")];
+        var notes = r.UpgradeNotes.Count == 0 && r.LayoutWarnings.Count == 0 ? warnings
+            : [.. warnings, .. r.UpgradeNotes.Select(n => $"REGISTRATION_V1_UPGRADED: {n}"), .. r.LayoutWarnings.Select(n => $"LAYOUT_DEFAULTS_UNKNOWN_ID: {n}")];
         return new FlowGraph(r.Id, 2, layout, direction, new FlowLayoutHints(ContainerPadding, direction), visibleContainers, visible, edges, notes);
     }
 

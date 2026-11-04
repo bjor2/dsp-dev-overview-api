@@ -62,3 +62,20 @@ I checked the API output against the UI/UX build in `ui/app/src/pages/flow/model
 6. **`FlowEdge.sources`** (code file:line) is not in the UI type. It could feed an edge tooltip.
 
 No blocking mismatch: the API output passes `normalizeGraph` unchanged.
+
+## Contract change (Nov 4 2026, option C): checked-in default layout
+
+Render's disk is ephemeral, so runtime positions are lost on every redeploy. The registration now carries a default layout, and the API merges two layers.
+
+- **Registration:** an optional `layoutDefaults: { "note"?: string, "positions": { graphId: {x,y} } }`. The frames match PUT/GET: containers absolute, handler nodes relative to their container, entities and `ext:*` absolute. customerproject.dev ships a seeded LR layout (§8) that covers all 18 ids: 15 nodes and 3 containers.
+- **GET /flow:** `position` = `layoutDefaults` (base) ← runtime store (override), per key. There is one new optional field on nodes and containers: **`positionSource: "default" | "stored"`**, present whenever `position` is.
+  - `layout` counts both layers: `stored` when every visible item has a position, `partial` when some do, `auto` when none.
+  - With the seeded defaults, customerproject.dev now arrives as `stored` / `default` on a fresh API. It is no longer `auto`.
+- **PUT /flow/positions:** unchanged. A partial merge into the runtime store, and unknown ids are ignored. `PUT {}` clears the runtime keys only, so the next GET shows the **defaults** again. "Reset layout" therefore means "back to the checked-in layout", not "auto". To get a pure auto layout, the UI has to ignore `positionSource: "default"` positions itself.
+- **New:** `GET /api/projects/{id}/flow/positions/export` returns `{ projectId, positions, fromStored, fromDefaults }`. `positions` is the effective merged map in `layoutDefaults.positions` shape, with sorted keys and whole pixels.
+  - `scripts/export-flow-layout.sh` (or `tools/Generate-Registration export-layout`) writes it into `architecture/registrations/<id>.json`. Commit the file to make a dragged layout survive redeploys.
+- **Unknown ids in `layoutDefaults`** are ignored. GET /flow then adds a `LAYOUT_DEFAULTS_UNKNOWN_ID: …` warning.
+- **UI impact:** none required. `normalizeGraph` / `layoutGraph` already pin anything with a `position`. Optional follow-ups for UI/UX:
+  - add `positionSource` to the types;
+  - relabel "Reset layout" as "Reset to default layout";
+  - offer an "Export layout" hint.

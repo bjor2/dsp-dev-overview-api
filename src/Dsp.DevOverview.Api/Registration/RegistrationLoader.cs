@@ -62,6 +62,7 @@ public sealed class RegistrationLoader
             ?? throw new InvalidDataException($"Empty registration: {full}");
         registration.SourcePath = full;
         registration.UpgradeNotes = notes;
+        registration.LayoutWarnings = LayoutDefaults.Warnings(node);
         return registration;
     }
 }
