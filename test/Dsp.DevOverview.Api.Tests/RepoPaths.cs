@@ -5,6 +5,9 @@ internal static class RepoPaths
     public static readonly string Root = FindRoot();
     public static string Schema => Path.Combine(Root, "architecture", "registration.schema.json");
     public static string Registration => Path.Combine(Root, "architecture", "registrations", "customerproject.dev.json");
+    public static string PriceRegistration => Path.Combine(Root, "architecture", "registrations", "price.dev.json");
+    public static string ArchitectureSchema => Path.Combine(Root, "architecture", "architecture-layer.schema.json");
+    public static string ArchitectureLayers => Path.Combine(Root, "architecture", "layers");
     public static string Catalog => Path.Combine(Root, "catalog", "customerproject.samples.json");
     /// <summary>The seed kit (read-only oracle). Only read, never built or executed.</summary>
     public const string Kit = "/workspace/dsp/local-dev/customerproject/seed-messages/Program.cs";

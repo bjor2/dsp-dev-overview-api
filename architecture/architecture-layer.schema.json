@@ -1,0 +1,432 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsp-dev-overview/architecture-layer.schema.json",
+  "title": "Proposed architecture layer and catalog v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/layer"
+    },
+    {
+      "$ref": "#/$defs/catalog"
+    }
+  ],
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref",
+        "confidence"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "repo",
+            "confluence",
+            "registration",
+            "inferred"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "enum": [
+            "confirmed",
+            "inferred",
+            "uncertain"
+          ]
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "inferred"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "confidence": {
+                "enum": [
+                  "inferred",
+                  "uncertain"
+                ]
+              }
+            },
+            "required": [
+              "note"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "confidence": {
+                "enum": [
+                  "inferred",
+                  "uncertain"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "note"
+            ]
+          }
+        }
+      ]
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "responsibility",
+        "boundary",
+        "sources",
+        "uncertainties"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^comp:[a-z0-9-]+\\.[a-z0-9.-]+$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "component",
+            "store",
+            "contract",
+            "external"
+          ]
+        },
+        "responsibility": {
+          "type": "string",
+          "minLength": 1
+        },
+        "boundary": {
+          "enum": [
+            "inside",
+            "outside"
+          ]
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "opensLayerId": {
+          "type": "string",
+          "pattern": "^layer:[a-z0-9-]+\\.[a-z0-9.-]+$"
+        },
+        "flowEntityId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "external"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "boundary": {
+                "const": "outside"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "from",
+        "to",
+        "kind",
+        "relationship",
+        "label",
+        "description",
+        "sources",
+        "uncertainties"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^aedge:[a-z0-9-]+\\.[a-z0-9.-]+$"
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^comp:[a-z0-9-]+\\.[a-z0-9.-]+$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^comp:[a-z0-9-]+\\.[a-z0-9.-]+$"
+        },
+        "kind": {
+          "const": "conceptual"
+        },
+        "relationship": {
+          "enum": [
+            "message",
+            "data",
+            "dependency"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "documentType",
+        "id",
+        "project",
+        "title",
+        "summary",
+        "parentLayerId",
+        "scope",
+        "reviewedAt",
+        "sources",
+        "uncertainties",
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "documentType": {
+          "const": "architecture-layer"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^layer:[a-z0-9-]+\\.[a-z0-9.-]+$"
+        },
+        "project": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentLayerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^layer:[a-z0-9-]+\\.[a-z0-9.-]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "flowRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "containerId"
+          ],
+          "properties": {
+            "containerId": {
+              "type": "string",
+              "pattern": "^container:[a-z0-9.-]+$"
+            },
+            "handlerId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "scope": {
+          "enum": [
+            "local",
+            "cloud",
+            "both"
+          ]
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "parentLayerId": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "flowRef"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "flowRef"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "documentType",
+        "project",
+        "registrationId",
+        "layers"
+      ],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "documentType": {
+          "const": "architecture-catalog"
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1
+        },
+        "registrationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "layers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "path"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^layer:[a-z0-9-]+\\.[a-z0-9.-]+$"
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9.-]*\\.json$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

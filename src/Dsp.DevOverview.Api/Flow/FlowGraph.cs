@@ -55,7 +55,9 @@ public sealed record FlowNode(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowPosition? Position,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ContainerId = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] FlowHandlerInfo? Handler = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PositionSource = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PositionSource = null,
+    // ADDENDA-011 (additive): root architecture layer bound to this handler; omitted when none.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? OpensLayerId = null);
 
 /// <summary>Labelled box around handler nodes (layout/grouping only; edges never target it). Position absolute.
 /// <see cref="AppIds"/> (ADDENDA-010 §9 #26): apps the container covers, from the registration container's appIds, else its
@@ -74,6 +76,10 @@ public sealed record FlowContainer(
 
     [Obsolete("Deprecated alias (ADDENDA-010 §9 #26); use AppIds.")]
     public string? AppId => AppIds.Count == 1 ? AppIds[0] : null;
+
+    /// <summary>ADDENDA-011 (additive): root architecture layer from a validated catalog flowRef; omitted when none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OpensLayerId { get; init; }
 }
 
 public sealed record FlowEdge(

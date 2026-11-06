@@ -1,0 +1,13 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-catalog",
+  "project": "customerproject",
+  "registrationId": "customerproject.dev",
+  "layers": [
+    {
+      "id": "layer:customerproject.ingress-app",
+      "path": "ingress-app.json"
+    }
+  ]
+}

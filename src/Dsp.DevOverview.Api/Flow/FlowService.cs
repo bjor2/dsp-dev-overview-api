@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Dsp.DevOverview.Api.AppConsole;
+using Dsp.DevOverview.Api.Architecture;
 using Dsp.DevOverview.Api.Registration;
 using Dsp.DevOverview.Api.ServiceBus;
 
@@ -7,7 +8,7 @@ namespace Dsp.DevOverview.Api.Flow;
 
 /// <summary>GET /flow and PUT /flow/positions: registration + live depths (slice 1/2 gateway) + stored positions.</summary>
 public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPositionStore positions, OverviewOptions options,
-    IConsoleStatusProvider console, ILogger<FlowService> log)
+    IConsoleStatusProvider console, ArchitectureService architecture, ILogger<FlowService> log)
 {
     private SbScope SbScope => options.ServiceBus.Scope;
 
@@ -32,8 +33,8 @@ public sealed class FlowService(OverviewService overview, SbGateway sb, FlowPosi
 
         // Checked-in layoutDefaults (survive Render redeploys) ← runtime positions, per key.
         var (effective, sources) = FlowGraphBuilder.EffectivePositions(p.Registration, stored);
-        return FlowGraphBuilder.Build(p.Registration, view, dir, SbScope, depths, effective, warnings,
-            appId => console.IsManagedRunning(p.Id, appId), sources);
+        return architecture.Link(p, FlowGraphBuilder.Build(p.Registration, view, dir, SbScope, depths, effective, warnings,
+            appId => console.IsManagedRunning(p.Id, appId), sources));
     }
 
     /// <summary>
