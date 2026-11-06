@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Demo.Api": {
+      "commandName": "Project",
+      "launchUrl": "swagger",
+      "applicationUrl": "https://localhost:6011;http://localhost:6010"
+    }
+  }
+}

@@ -34,22 +34,88 @@ on_http_request:
 ```
 Caveat: the API itself still requires a bearer token; ngrok's session cookie does not supply one. For browser use, Swagger "Authorize" with a token is still needed, or use the machine host.
 
-### Machine path — recommended: `jwt-validation`
-Validate Entra tokens at the edge (issuer = tenant that issues the DSP dev tokens, audience = the customerproject API app id URI — **unknown, read from Api appsettings/APIM when wiring**), and pass the bearer through so the Api's own claim logic works unchanged. Callers with managed identity / client credentials work without shared secrets. Check current `jwt-validation` schema at https://ngrok.com/docs/traffic-policy/actions/jwt-validation/ before writing it (not verified here).
+### Machine path — FINAL (Bjor via Team Lead, 2026-11-03): header secret at the ngrok edge
+Topology: browser → Render web front door (Node OIDC proxy, ADR-006) → **machine host** `<MACHINE_HOST>` → box API :5011. Humans use the **human host** `<HUMAN_HOST>` (OAuth policy above). **No API code edits**; configuration lives only in the ngrok traffic policy and the web front door.
 
-Fallback (simpler, weaker): header secret
+**Decision: shared header secret, not JWT validation.** The box API validates nothing itself, so an Entra token would only be checked at the edge. That would need a new API app registration, an exposed scope, client-credential token minting in Node, and a `jwt-validation` policy, all to protect a single trusted caller. The header secret is one vault entry plus one env var. JWT validation remains a later option if more callers appear or Render gets workload identity.
+
+Names (placeholders, no values): ngrok vault `dsp-overview`, secrets `frontdoor-key` and `frontdoor-key-next` (rotation); Render web env `BOX_UPSTREAM_SECRET`; header `X-Dsp-Box-Key`.
+
+Syntax sources: `secrets.get('vault','name')` → https://ngrok.com/docs/gateway/traffic-policy/secrets and https://ngrok.com/docs/gateway/traffic-policy/macros. `req.headers` is a lowercase-keyed `map[string][]string` → https://ngrok.com/docs/traffic-policy/variables/req. `deny` → https://ngrok.com/docs/traffic-policy/actions/deny. `remove-headers` → https://ngrok.com/docs/traffic-policy/actions/remove-headers. oauth + email check → https://ngrok.com/docs/traffic-policy/actions/oauth/
+
+`policy-machine.yml`
 ```yaml
 on_http_request:
+  # 1. Reject unless X-Dsp-Box-Key matches current or next secret (missing header → deny; guard before [0])
   - expressions:
-      - "!('x-dsp-tunnel-key' in req.headers) || req.headers['x-dsp-tunnel-key'][0] != secrets.get('dsp-overview', 'tunnel-key')"
+      - >-
+        !('x-dsp-box-key' in req.headers) ||
+        !(req.headers['x-dsp-box-key'][0] == secrets.get('dsp-overview', 'frontdoor-key') ||
+          req.headers['x-dsp-box-key'][0] == secrets.get('dsp-overview', 'frontdoor-key-next'))
     actions:
       - type: deny
-        config: { status_code: 403 }
+        config:
+          status_code: 403
+  # 2. Strip the secret before it reaches the API (and its logs)
+  - actions:
+      - type: remove-headers
+        config:
+          headers:
+            - x-dsp-box-key
 ```
-Secret lives in ngrok vault `dsp-overview/tunnel-key` (name only). Requires callers to add a header → Azure services usually can't without config changes (APIM can via policy). Verify `secrets.get` syntax against ngrok vault docs.
-Optional add-on: `restrict-ips` to Azure dev egress ranges (unknown).
 
-**Recommendation:** expose only Api :5011; human host = OAuth+email; machine host = jwt-validation (fallback header secret via APIM). Never expose 7239/7240.
+`policy-human.yml`
+```yaml
+on_http_request:
+  - actions:
+      - type: oauth
+        config:
+          provider: microsoft
+  - expressions:
+      - "actions.ngrok.oauth.identity.email != 'bjor.byrkjedal@osilion.no'"
+    actions:
+      - type: deny
+        config:
+          status_code: 403
+```
+Seed `frontdoor-key-next` with the same value as `frontdoor-key` (or a random placeholder) so `secrets.get` never resolves to a missing secret. This behaviour is unverified; see Unknowns.
+
+Agent: two endpoints in `ngrok.yml` (agent config v3), started with `ngrok start --all`:
+```yaml
+version: 3
+agent:
+  authtoken: ${NGROK_AUTHTOKEN}      # env, not committed
+endpoints:
+  - name: dsp-box-api-machine
+    url: https://<MACHINE_HOST>
+    upstream: { url: 5011 }
+    traffic_policy_file: ./policy-machine.yml   # or inline traffic_policy:
+  - name: dsp-box-api-human
+    url: https://<HUMAN_HOST>
+    upstream: { url: 5011 }
+    traffic_policy_file: ./policy-human.yml
+```
+One-off equivalent: `ngrok http 5011 --url https://<MACHINE_HOST> --traffic-policy-file policy-machine.yml` (plus a second process for the human host). Check the `traffic_policy_file` key name against the agent config docs; inline `traffic_policy:` is the safe fallback.
+
+**Web front door upstream selection (config only):**
+- Env: `API_UPSTREAM_MODE=box|render` (default `box`), `BOX_API_UPSTREAM=https://<MACHINE_HOST>`, `RENDER_API_UPSTREAM=https://dsp-dev-overview-api.onrender.com`, `BOX_UPSTREAM_SECRET`, optional `API_UPSTREAM_FALLBACK=read-only|off` (default `off`).
+- `X-Dsp-Box-Key` is injected **only** on requests to the box upstream, **only after** the OIDC session check, and is never sent to Render. Any inbound `x-dsp-box-key` from the browser is stripped first.
+- Box health: probe `GET <BOX>/healthz` (with header), cache the result for 30 s. Treat it as down on connect error, 5xx, or the ngrok offline error (`ERR_NGROK_3200`, detectable via the `ngrok-error-code` response header).
+- No silent fallback for mutating calls (POST/PUT/DELETE: inject, retry DLQ, purge). If the box is down, return 503 `{code:"BOX_OFFLINE"}`. GET fallback to Render happens only if `API_UPSTREAM_FALLBACK=read-only`.
+- Every proxied response carries `X-Dsp-Upstream: box|render` (plus `X-Dsp-Upstream-Fallback: 1` when a fallback was used). The UI shows this as an upstream badge.
+
+**Rotation:** (1) set the vault secret `frontdoor-key-next` = new value, (2) set Render `BOX_UPSTREAM_SECRET` = new value and redeploy, (3) set `frontdoor-key` = new value, (4) re-randomise `frontdoor-key-next`. Vault updates apply to policies without an agent restart (per the secrets docs).
+
+**Verification (run by whoever brings the tunnel up):**
+```bash
+M=https://<MACHINE_HOST>; H=https://<HUMAN_HOST>
+curl -s -o /dev/null -w '%{http_code}\n' $M/healthz                                 # 403
+curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Dsp-Box-Key: wrong' $M/healthz       # 403
+curl -s -o /dev/null -w '%{http_code}\n' -H "X-Dsp-Box-Key: $BOX_UPSTREAM_SECRET" $M/healthz  # 200 (value from env, never pasted)
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' $H/healthz                 # 302 → login.microsoftonline.com (via idp.ngrok.com)
+# Front door: response header X-Dsp-Upstream: box ; stop ngrok → mutating call returns 503 BOX_OFFLINE
+```
+Note: on the machine host `/healthz` also needs the header. The Render keepalive cron targets the Render API, not the box.
 
 ## Risks
 - Machine host is a public door into a dev API with real dev SB/DB writes — keep tunnel off when not testing.
@@ -57,6 +123,8 @@ Optional add-on: `restrict-ips` to Azure dev egress ranges (unknown).
 - Managed ngrok Microsoft app: personal and work accounts both accepted; the email check is the real gate.
 
 ## Unknowns
+- `secrets.get` behaviour when a secret is missing; ngrok Traffic Inspector full-capture can show interpolated secrets (keep full capture off).
+- Exact `<MACHINE_HOST>`/`<HUMAN_HOST>` (reserved domains).
 - ngrok plan: Traffic Policy oauth/jwt-validation, reserved/custom domains, multiple endpoints, vault — plan tier needed (likely Pay-as-you-go/paid); unconfirmed.
 - Which dev Azure component actually needs to call the box (none found in code).
 - Token issuer/audience for the Api in dev.

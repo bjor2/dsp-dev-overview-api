@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Dsp.DevOverview.Api;
 using Dsp.DevOverview.Api.AppConsole;
 using Dsp.DevOverview.Api.AppInsights;
+using Dsp.DevOverview.Api.Architecture;
 using Dsp.DevOverview.Api.Flow;
 using Dsp.DevOverview.Api.Health;
 using Dsp.DevOverview.Api.Registration;
@@ -31,6 +32,8 @@ builder.Services.AddSingleton(sp => new ConsoleManager(sp.GetRequiredService<Pro
     Path.Combine(root, options.DataDir, options.Console.LogDir), options.Console.StubTicker ?? builder.Environment.IsDevelopment(),
     sp.GetRequiredService<IConsoleSourceFactory>(), sp.GetRequiredService<IPortProbe>(), sp.GetRequiredService<ILogger<ConsoleManager>>()));
 builder.Services.AddSingleton<IConsoleStatusProvider>(sp => sp.GetRequiredService<ConsoleManager>());
+builder.Services.AddSingleton(sp => new ArchitectureService(sp.GetRequiredService<OverviewService>(),
+    Path.Combine(root, options.ArchitectureLayersDir), Path.Combine(root, options.ArchitectureSchema), sp.GetRequiredService<ILogger<ArchitectureService>>()));
 builder.Services.AddSingleton<FlowService>();
 builder.Services.AddAppInsightsLogs(options.AppInsights);
 // Slice 7: GET /api/projects health from live signals (console process manager + ports, SB probe, AI probe).
@@ -49,6 +52,9 @@ var app = builder.Build();
 
 // Fail at startup (not on first request) if a registration is schema-invalid.
 app.Services.GetRequiredService<ProjectStore>();
+// Optional architecture catalogs are validated (and logged) up front too, but never fail startup.
+var architecture = app.Services.GetRequiredService<ArchitectureService>();
+foreach (var project in app.Services.GetRequiredService<ProjectStore>().All) architecture.For(project);
 
 app.UseCors();
 app.Use(async (ctx, next) =>
@@ -76,6 +82,10 @@ var api = app.MapGroup("/api");
 api.MapGet("/projects", (OverviewService s, CancellationToken ct) => s.ProjectsAsync(ct));
 
 api.MapGet("/projects/{id}/flow", (string id, string? scope, string? direction, FlowService s, CancellationToken ct) => s.GraphAsync(id, scope, direction, ct));
+
+// ADDENDA-011: read-only architecture layers (validated in-memory catalog; layerId is an id, never a path).
+api.MapGet("/projects/{id}/architecture", (string id, ArchitectureService s) => s.Index(id));
+api.MapGet("/projects/{id}/architecture/layer", (string id, string? layerId, ArchitectureService s) => s.Layer(id, layerId));
 
 api.MapGet("/projects/{id}/flow/positions/export", (string id, FlowService s) => s.Export(id));
 api.MapPut("/projects/{id}/flow/positions", (string id, Dictionary<string, FlowPositionInput>? body, FlowService s, CancellationToken ct) => s.SavePositionsAsync(id, body, ct));

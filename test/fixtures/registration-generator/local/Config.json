@@ -1,0 +1,25 @@
+{
+  "UserConfig": {
+    "Namespaces": [
+      {
+        "Name": "sbemulatorns",
+        "Queues": [
+          { "Name": "demo", "Properties": { "MaxDeliveryCount": 10, "ForwardTo": "" } },
+          { "Name": "demo-ingress", "Properties": { "MaxDeliveryCount": 10, "ForwardTo": "" } },
+          { "Name": "demo-snapshot", "Properties": { "MaxDeliveryCount": 10, "ForwardTo": "" } },
+          { "Name": "notification", "Properties": { "MaxDeliveryCount": 7, "ForwardTo": "" } },
+          { "Name": "demo-topic-inspect", "Properties": { "MaxDeliveryCount": 10, "ForwardTo": "" } }
+        ],
+        "Topics": [
+          {
+            "Name": "demo-topic",
+            "Properties": {},
+            "Subscriptions": [
+              { "Name": "local-inspect", "Properties": { "MaxDeliveryCount": 10, "ForwardTo": "demo-topic-inspect" } }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

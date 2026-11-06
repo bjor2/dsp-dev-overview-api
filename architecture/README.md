@@ -21,4 +21,10 @@ Read-only inputs: terraform `870-brodrene-dahl-dsp/dev/eu-west/unprovisioned_app
 | HANDOFF-developer-render-entra.md | Entra app fields, redirect URIs, Render env/build/health, Tester checks |
 | ADDENDA-004-bjoo-local-servicebus.md | Bjor Azure-local SB host: names + local mutate policy |
 | ADDENDA-005-render-api-servicebus-auth.md | Render API → SB via dedicated Osilion SP (Data Owner on single namespace); commands pending Bjor OK |
-| ADDENDA-006-ngrok-oauth-box-ingress.md | ngrok ingress: only Api :5011; OAuth+email human host, jwt-validation machine host |
+| ADDENDA-006-ngrok-oauth-box-ingress.md | ngrok on box API :5011: human host OAuth+email; machine host = header secret X-Dsp-Box-Key (vault) for Render front door; upstream box\|render, no silent mutating fallback |
+| ADDENDA-007-render-api-lockdown.md | P1: lockdown = ngrok gate, no API code; Render API kept running (accepted risk per Bjor); SP rotation / private svc / static-site delete HELD |
+| ADDENDA-008-flow-handler-nodes-containers.md | Flow v2: handler nodes (INGRESS/SNAPSHOT/DOMAIN/COMMANDS/api.http) in resource containers; invariant I-1 (self-requeue badge); positions v2 `pos:{project}:{env}:…` + migration |
+| ADDENDA-009-price-registration.md | dsp-price dev registration (registrations/price.dev.json): 18 handler nodes in 4 containers, PICO direct → domain-ingress, timer/blob trigger kinds + hosts in schema; bjoo namespace has no price entities |
+| ADDENDA-010-local-listen-agent.md | Listen-only Windows agent: detection hints (LOCKED, in schema + both registrations), ingest WS/HTTPS terminating in Node front door, SPA status/SSE, memory-only buffers, Entra device-code + allowlist, redaction |
+| ADDENDA-011-architecture-layers.md | Proposed C4-style Flow drill-down: separate versioned catalog/layers, provenance, validated navigation; worked customerproject Ingress layer; UI/developer note + draft research skill |
+| NOTE-ADDENDA-011-api-contract.md | As implemented: `GET /architecture`, `GET /architecture/layer?layerId=`, Flow `opensLayerId`, `ARCHITECTURE_INVALID`, V-001..V-008 loader rules, conceptual-vs-live rules for UI |

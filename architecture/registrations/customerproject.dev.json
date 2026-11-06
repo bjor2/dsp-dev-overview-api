@@ -62,7 +62,24 @@
     "url": "https://localhost:5011/swagger",
     "runScript": "/workspace/dsp/local-dev/customerproject/run-api.linux.ps1"
    },
-   "namingNote": "Seen in /workspace/dsp docs; cloudRoleName = site name (Functions/App Service default) — confirm in AI."
+   "namingNote": "Seen in /workspace/dsp docs; cloudRoleName = site name (Functions/App Service default) — confirm in AI.",
+   "detection": {
+    "repoRoot": "C:/Users/bjooa/source/repos/DSP/dsp-customerproject",
+    "processNames": [
+     "Dahl.CustomerProject.Api",
+     "dotnet"
+    ],
+    "commandLineContains": [
+     "Dahl.CustomerProject.Api"
+    ],
+    "executablePathGlobs": [
+     "{repoRoot}/src/Dahl.CustomerProject.Api/bin/**/*"
+    ],
+    "ports": [
+     5011
+    ],
+    "logGlobs": []
+   }
   },
   {
    "id": "app:functions",
@@ -74,7 +91,24 @@
     "port": 7239,
     "runScript": "/workspace/dsp/local-dev/customerproject/run-functions.linux.ps1"
    },
-   "namingNote": "Seen in /workspace/dsp docs; cloudRoleName = site name (Functions/App Service default) — confirm in AI."
+   "namingNote": "Seen in /workspace/dsp docs; cloudRoleName = site name (Functions/App Service default) — confirm in AI.",
+   "detection": {
+    "repoRoot": "C:/Users/bjooa/source/repos/DSP/dsp-customerproject",
+    "processNames": [
+     "func",
+     "dotnet"
+    ],
+    "commandLineContains": [
+     "Dahl.CustomerProject.Functions"
+    ],
+    "executablePathGlobs": [
+     "{repoRoot}/src/Dahl.CustomerProject.Functions/bin/**/*"
+    ],
+    "ports": [
+     7239
+    ],
+    "logGlobs": []
+   }
   },
   {
    "id": "app:ingress",
@@ -86,7 +120,24 @@
     "port": 7240,
     "runScript": "/workspace/dsp/local-dev/customerproject/run-ingress.linux.ps1"
    },
-   "namingNote": "UNCONFIRMED: name built by external dahl-app module v2.1.8 (app_name=customerproject-ingress, short=custprin). Confirm via az / AI distinct cloud_RoleName."
+   "namingNote": "UNCONFIRMED: name built by external dahl-app module v2.1.8 (app_name=customerproject-ingress, short=custprin). Confirm via az / AI distinct cloud_RoleName.",
+   "detection": {
+    "repoRoot": "C:/Users/bjooa/source/repos/DSP/dsp-customerproject",
+    "processNames": [
+     "func",
+     "dotnet"
+    ],
+    "commandLineContains": [
+     "Dahl.CustomerProject.Ingress.Functions"
+    ],
+    "executablePathGlobs": [
+     "{repoRoot}/src/Dahl.CustomerProject.Ingress.Functions/bin/**/*"
+    ],
+    "ports": [
+     7240
+    ],
+    "logGlobs": []
+   }
   }
  ],
  "containers": [
@@ -96,6 +147,9 @@
    "kind": "resource",
    "resourceRefs": [
     "app:api"
+   ],
+   "appIds": [
+    "app:api"
    ]
   },
   {
@@ -104,6 +158,9 @@
    "kind": "resource",
    "resourceRefs": [
     "app:functions"
+   ],
+   "appIds": [
+    "app:functions"
    ]
   },
   {
@@ -111,6 +168,9 @@
    "label": "Ingress :7240",
    "kind": "resource",
    "resourceRefs": [
+    "app:ingress"
+   ],
+   "appIds": [
     "app:ingress"
    ]
   }

@@ -9,6 +9,9 @@ public sealed class OverviewOptions
     /// <summary>dev-overview root. Empty = walk up from the content root to the folder holding Dsp.DevOverview.sln.</summary>
     public string? Root { get; set; }
     public string RegistrationSchema { get; set; } = "architecture/registration.schema.json";
+    /// <summary>ADDENDA-011 optional architecture layers: {ArchitectureLayersDir}/{project}/index.json. Relative to the root unless absolute.</summary>
+    public string ArchitectureLayersDir { get; set; } = "architecture/layers";
+    public string ArchitectureSchema { get; set; } = "architecture/architecture-layer.schema.json";
     /// <summary>Paths relative to the root. (No collection default: the config binder would append to it.)</summary>
     public List<string> Registrations { get; set; } = [];
     public ServiceBusOptions ServiceBus { get; set; } = new();

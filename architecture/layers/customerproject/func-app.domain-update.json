@@ -1,0 +1,337 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.func-app.domain-update",
+  "project": "customerproject",
+  "title": "DOMAIN \u2014 applying ingress snapshots",
+  "summary": "Second-level drill-down of Functions \u2192 \u201cApply ingress snapshots\u201d. Shows how address and project-price snapshots become domain rows and when address changes trigger project work. Conceptual responsibilities only.",
+  "parentLayerId": "layer:customerproject.func-app",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T11:30:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
+      "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
+      "confidence": "confirmed",
+      "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+      "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
+      "confidence": "confirmed",
+      "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateProjectWithPriceFromSnapshotHandler.cs",
+      "note": "Lines 16\u201334: save ProjectWithPrice from snapshot; comment states no CustomerProjectChanged publish is needed.",
+      "confidence": "confirmed",
+      "revision": "sha256:39b722193830ee568568cf3abae5de5cadc3e1a35d84e0a3b435a936be8b3e4c"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774292",
+      "revision": "version:13",
+      "confidence": "confirmed",
+      "note": "2024 conversion design: PICo/Table Event streams for CustomerAddress and ProjectWithPrice; design intent, not deployment proof."
+    }
+  ],
+  "uncertainties": [
+    "Dahl.Core ImportStorableEntityFromSnapshotBase internals (ordering/staleness rules) are not in this repo; bookkeeping is described by name only.",
+    "Confluence 22774292 v13 describes the same CustomerAddress/ProjectWithPrice stream conversion as design intent; current code is authoritative here and rollout is not inferred."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.domain-update.input",
+      "label": "Domain update queue",
+      "kind": "external",
+      "responsibility": "Boundary input; same Flow entity as the parent layer\u2019s domain input.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
+          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
+          "confidence": "confirmed",
+          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "q:customerproject-domain"
+    },
+    {
+      "id": "comp:customerproject.domain-update.address-apply",
+      "label": "Customer-address snapshot apply",
+      "kind": "component",
+      "responsibility": "Persists CustomerAddressSnapshot through the shared storable-entity snapshot base (composite key: DataSource, CustomerId, AddressType, ErpAddressId), with bookkeeping that discards unchanged/out-of-date snapshots.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 21\u201336 and 81\u2013106: Dahl.Core ImportStorableEntityFromSnapshotBase with bookkeeping + storable-entity storage; composite key lookup.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 43\u201345 and 73\u201377: discarded saves stop unless feature EnableM3CloudEventSendingOnNoChange applies.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.domain-update.project-trigger",
+      "label": "Project follow-up decision",
+      "kind": "component",
+      "responsibility": "After a saved address: a newly created Delivery address requests project creation from its ERP reference; a modified address requests address-changed handling; non-delivery new addresses stop here.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.domain-update.price-apply",
+      "label": "Project-price snapshot apply",
+      "kind": "component",
+      "responsibility": "Persists ProjectWithPriceSnapshot rows only; deliberately publishes no event.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateProjectWithPriceFromSnapshotHandler.cs",
+          "note": "Lines 16\u201334: save ProjectWithPrice from snapshot; comment states no CustomerProjectChanged publish is needed.",
+          "confidence": "confirmed",
+          "revision": "sha256:39b722193830ee568568cf3abae5de5cadc3e1a35d84e0a3b435a936be8b3e4c"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.domain-update.snapshot-store",
+      "label": "Snapshot destinations + bookkeeping",
+      "kind": "store",
+      "responsibility": "CustomerAddress and ProjectWithPrice tables as snapshot destinations plus snapshot bookkeeping.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Storage/Migrations/20240528125402_CustomerAddressAndProjectWithPriceAsSnapshotDestinations.cs",
+          "note": "Migration making CustomerAddress and ProjectWithPrice snapshot destinations.",
+          "confidence": "confirmed",
+          "revision": "sha256:0d29c3d64f437a6d70681b5e1d63ac5ba90ac6cd598aa5c3d2784c559b36258e"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Storage/Migrations/20240529083503_SnapshotBookkeeping.cs",
+          "note": "Migration adding snapshot bookkeeping storage used by snapshot destinations.",
+          "confidence": "confirmed",
+          "revision": "sha256:46de557acb6b007e02ab6be99b50736374da85ace65e5588dc70d5c1cd49932c"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Storage/CustomerProjectStorageDbContext.cs",
+          "note": "EF DbContext for CustomerProject SQL storage; no connection values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:040140df0013f7b43f5b5a1c14ebdedacb69e06448e1511a096393df3c972a98"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject"
+    },
+    {
+      "id": "comp:customerproject.domain-update.feature-flags",
+      "label": "DSP feature management",
+      "kind": "external",
+      "responsibility": "Feature flag EnableM3CloudEventSendingOnNoChange can let discarded (no-change) address saves still emit follow-up commands.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 43\u201345 and 73\u201377: discarded saves stop unless feature EnableM3CloudEventSendingOnNoChange applies.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        }
+      ],
+      "uncertainties": [
+        "Flag value per environment is not recorded."
+      ]
+    },
+    {
+      "id": "comp:customerproject.domain-update.commands-out",
+      "label": "Command queue",
+      "kind": "external",
+      "responsibility": "Boundary output to COMMANDS (parent layer\u2019s project lifecycle).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "fn.domain publishes to q:customerproject.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "q:customerproject"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.domain-update.address-in",
+      "from": "comp:customerproject.domain-update.input",
+      "to": "comp:customerproject.domain-update.address-apply",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "UpdateCustomerAddressFromSnapshot",
+      "description": "Address snapshot batch.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
+          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
+          "confidence": "confirmed",
+          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.domain-update.price-in",
+      "from": "comp:customerproject.domain-update.input",
+      "to": "comp:customerproject.domain-update.price-apply",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "UpdateProjectWithPriceFromSnapshot",
+      "description": "Project-price snapshot batch.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
+          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
+          "confidence": "confirmed",
+          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.domain-update.address-store",
+      "from": "comp:customerproject.domain-update.address-apply",
+      "to": "comp:customerproject.domain-update.snapshot-store",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "CustomerAddress",
+      "description": "Upsert with bookkeeping.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 21\u201336 and 81\u2013106: Dahl.Core ImportStorableEntityFromSnapshotBase with bookkeeping + storable-entity storage; composite key lookup.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.domain-update.price-store",
+      "from": "comp:customerproject.domain-update.price-apply",
+      "to": "comp:customerproject.domain-update.snapshot-store",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "ProjectWithPrice",
+      "description": "Upsert with bookkeeping.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateProjectWithPriceFromSnapshotHandler.cs",
+          "note": "Lines 16\u201334: save ProjectWithPrice from snapshot; comment states no CustomerProjectChanged publish is needed.",
+          "confidence": "confirmed",
+          "revision": "sha256:39b722193830ee568568cf3abae5de5cadc3e1a35d84e0a3b435a936be8b3e4c"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.domain-update.flag",
+      "from": "comp:customerproject.domain-update.address-apply",
+      "to": "comp:customerproject.domain-update.feature-flags",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "No-change override",
+      "description": "Consulted only when a save is discarded as unchanged.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 43\u201345 and 73\u201377: discarded saves stop unless feature EnableM3CloudEventSendingOnNoChange applies.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.domain-update.decide",
+      "from": "comp:customerproject.domain-update.address-apply",
+      "to": "comp:customerproject.domain-update.project-trigger",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Saved address",
+      "description": "Created-vs-modified and AddressType drive the decision.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.domain-update.commands",
+      "from": "comp:customerproject.domain-update.project-trigger",
+      "to": "comp:customerproject.domain-update.commands-out",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CreateProjectsFromErpReferences / HandleCustomerAddressChanged",
+      "description": "Follow-up work for COMMANDS.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

@@ -1,0 +1,508 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.ingress-app",
+  "project": "customerproject",
+  "title": "Ingress \u2014 import and snapshot responsibilities",
+  "summary": "Inside the Ingress compute container: persist imported M3 change models, compose address and project-price snapshots, and publish domain updates. Queues and SQL storage are boundary dependencies, not nested compute. Arrows explain message/data responsibilities, never execution order or observed events.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:customerproject.ingress-app"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T10:00:00+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+      "note": "Worked entry from existing Flow resource container.",
+      "confidence": "confirmed",
+      "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/IngressQueueHandler.cs",
+      "note": "Lines 52\u2013103: ingress trigger and six accepted M3 event contract subjects.",
+      "confidence": "confirmed",
+      "revision": "sha256:9a87f8450b2300aa3aeb0f01d096e681c7dcd19f2f050773f60e1f9d04003ea5"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+      "note": "Lines 45\u201389: snapshot trigger, address and project-price command families.",
+      "confidence": "confirmed",
+      "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779513",
+      "revision": "version:4",
+      "confidence": "confirmed",
+      "note": "Opened full markdown. 2023 workshop domain context only: project versus delivery address and CUNO/ADID. Image/macros omitted by conversion; not implementation evidence."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779013",
+      "revision": "version:6",
+      "confidence": "confirmed",
+      "note": "Opened full markdown. Historical upstream ADF/M3 address and HasProjectPrice analysis, NOT an in-process component or evidence ADF executes here."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774292",
+      "revision": "version:13",
+      "confidence": "confirmed",
+      "note": "Opened full markdown. 2024 conversion design explicitly replaces Optimera ADF CSV ingress with PICo/Table Event streams for CustomerAddress and ProjectWithPrice; design intent, not deployment proof. Macro/emoticon conversion is lossy."
+    }
+  ],
+  "uncertainties": [
+    "Local source HEAD was readable at final verification: b0864c051065f88e978b6d110483096c915d7edf; git status was clean. Deployment freshness remains unknown. Per-file hashes identify the reviewed evidence independently of metadata.",
+    "Confluence 22779513 is workshop intent (2023); 22779013 is historical ADF analysis (2024). Neither proves that TPL or ADF executes inside Ingress today. No such components are drawn.",
+    "Confluence markdown conversion on 22779513 omitted image/macro content; no image-derived architecture claims made.",
+    "Dahl.Core import/retry internals and exact upstream transport/deployment topology are outside reviewed source evidence; do not infer retries, ordering, transaction boundaries or live activity.",
+    "Confluence historical HasProjectPrice SQL differs from current snapshot SQL (including validity/deletion treatment). Current code describes this layer; semantic parity and business-intent reconciliation remain unverified.",
+    "Confluence 22774292 v13 supports event-stream conversion intent, but includes older SQL/sequencing; local source defines this explanation, and rollout/completion is not inferred from the design document."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.ingress.input",
+      "label": "Ingress queue",
+      "kind": "external",
+      "responsibility": "Boundary input: six M3 change-event contract subjects accepted by INGRESS. Upstream transport implementation is outside this layer.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/IngressQueueHandler.cs",
+          "note": "Lines 52\u2013103: ingress trigger and six accepted M3 event contract subjects.",
+          "confidence": "confirmed",
+          "revision": "sha256:9a87f8450b2300aa3aeb0f01d096e681c7dcd19f2f050773f60e1f9d04003ea5"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "q:customerproject-ingress is the registered trigger entity.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "q:customerproject-ingress"
+    },
+    {
+      "id": "comp:customerproject.ingress.import",
+      "label": "Change-event import",
+      "kind": "component",
+      "responsibility": "Maps supported change events into persisted ingress models and requests snapshot rebuilding when applicable. Groups import responsibilities, not individual calls or retry steps.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/IngressQueueHandler.cs",
+          "note": "Lines 52\u2013103: ingress trigger and six accepted M3 event contract subjects.",
+          "confidence": "confirmed",
+          "revision": "sha256:9a87f8450b2300aa3aeb0f01d096e681c7dcd19f2f050773f60e1f9d04003ea5"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/Import/ChangeEventHandlerBase.cs",
+          "note": "Lines 16\u201320 and 44\u201352: shared import storage abstraction and snapshot command with Id/DataSource.",
+          "confidence": "confirmed",
+          "revision": "sha256:f3ed8223e1cc3c95e165a4ed48999e020eeeea39f16801b893151d6540ad798f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/Import/CustomerAddressChangedHandler.cs",
+          "note": "Lines 20\u201329: save change model; discarded or temporary addresses do not request a snapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:3526660f3514480f1f2c40b809540b1ee6c6fae777abbc6b541fdd8cd303f414"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.ingress.storage",
+      "label": "Persisted ingress models",
+      "kind": "store",
+      "responsibility": "Stores ingress models and supports read-side address and project-price snapshot composition. SQL-backed, configured through SqlIngress/SqlIngressTwo; physical hosting is not asserted.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 7\u201314, 77\u2013136, 184\u2013232: snapshot queries over persisted ingress models; not live ERP queries.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/Configuration/ServiceCollectionExtensions.cs",
+          "note": "Lines 13\u201327: EF import and Dapper snapshot storage use SqlIngress/SqlIngressTwo configuration keys; no values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:1499ca2a4a2da8e7f478813a6d85e83cca3c9f6edde6cfbdc57db28d4697a906"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject"
+    },
+    {
+      "id": "comp:customerproject.ingress.snapshot-requests",
+      "label": "Snapshot request queue",
+      "kind": "external",
+      "responsibility": "Decouples ingress model import from address and project-price snapshot composition via Id/DataSource commands.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/Import/ChangeEventHandlerBase.cs",
+          "note": "Lines 16\u201320 and 44\u201352: shared import storage abstraction and snapshot command with Id/DataSource.",
+          "confidence": "confirmed",
+          "revision": "sha256:f3ed8223e1cc3c95e165a4ed48999e020eeeea39f16801b893151d6540ad798f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45\u201389: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Messaging/QueueClients/SnapshotQueueClient.cs",
+          "note": "Lines 12\u201321: snapshot sender configured by SnapshotQueue.",
+          "confidence": "confirmed",
+          "revision": "sha256:d59602a886714a0d8baf03281409383e9b4cf75b707d127e586d7f233b9ef4cd"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "q:customerproject-snapshot is the SNAPSHOT handler trigger.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "q:customerproject-snapshot"
+    },
+    {
+      "id": "comp:customerproject.ingress.address-snapshots",
+      "label": "Customer-address snapshot composition",
+      "kind": "component",
+      "responsibility": "Combines persisted customer/address/email data into CustomerAddressSnapshot update commands; covers the three address-related snapshot request subjects.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45\u201389: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerAddressChangedHandler.cs",
+          "note": "Lines 22\u201328: build CustomerAddressSnapshot and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:549fc6a251f67d065ab4590483109015bcaef103cbb0f6a91b977f521c2835a8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 7\u201314, 77\u2013136, 184\u2013232: snapshot queries over persisted ingress models; not live ERP queries.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.ingress.price-snapshots",
+      "label": "Project-price snapshot composition",
+      "kind": "component",
+      "responsibility": "Combines persisted customer agreement, quotation order head and header-file data into ProjectWithPriceSnapshot update commands. This is project price-presence/date information, not the dsp-price service.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45\u201389: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnHeaderFileChangedHandler.cs",
+          "note": "Lines 22\u201328: build ProjectWithPriceSnapshot and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:25646cbae890fb49b9d6249d4c54b9e50719e9a98a78523efcef8970e9c44978"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 7\u201314, 77\u2013136, 184\u2013232: snapshot queries over persisted ingress models; not live ERP queries.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.ingress.domain-output",
+      "label": "Domain update queue",
+      "kind": "external",
+      "responsibility": "Boundary output carrying UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot; domain application is in the Functions container, outside this layer.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerAddressChangedHandler.cs",
+          "note": "Lines 22\u201328: build CustomerAddressSnapshot and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:549fc6a251f67d065ab4590483109015bcaef103cbb0f6a91b977f521c2835a8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnHeaderFileChangedHandler.cs",
+          "note": "Lines 22\u201328: build ProjectWithPriceSnapshot and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:25646cbae890fb49b9d6249d4c54b9e50719e9a98a78523efcef8970e9c44978"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Messaging/QueueClients/DomainQueueClient.cs",
+          "note": "Lines 12\u201321: domain sender configured by DomainQueue.",
+          "confidence": "confirmed",
+          "revision": "sha256:ecdd772186bbf2e95c3c09af23809f4f15ab3218bc5a5ee15aed827e13baaea0"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "q:customerproject-domain triggers customerproject.fn.domain in func-app, not ingress-app.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "q:customerproject-domain"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.ingress.changes",
+      "from": "comp:customerproject.ingress.input",
+      "to": "comp:customerproject.ingress.import",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "M3 change-event contracts",
+      "description": "Supported subject families; not a live event trail.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/IngressQueueHandler.cs",
+          "note": "Lines 52\u2013103: ingress trigger and six accepted M3 event contract subjects.",
+          "confidence": "confirmed",
+          "revision": "sha256:9a87f8450b2300aa3aeb0f01d096e681c7dcd19f2f050773f60e1f9d04003ea5"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.ingress.persist",
+      "from": "comp:customerproject.ingress.import",
+      "to": "comp:customerproject.ingress.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Ingress models",
+      "description": "Import persists mapped models through IIngressModelStorage; base package internals are not expanded.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/Import/ChangeEventHandlerBase.cs",
+          "note": "Lines 16\u201320 and 44\u201352: shared import storage abstraction and snapshot command with Id/DataSource.",
+          "confidence": "confirmed",
+          "revision": "sha256:f3ed8223e1cc3c95e165a4ed48999e020eeeea39f16801b893151d6540ad798f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/Import/CustomerAddressChangedHandler.cs",
+          "note": "Lines 20\u201329: save change model; discarded or temporary addresses do not request a snapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:3526660f3514480f1f2c40b809540b1ee6c6fae777abbc6b541fdd8cd303f414"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/Configuration/ServiceCollectionExtensions.cs",
+          "note": "Lines 13\u201327: EF import and Dapper snapshot storage use SqlIngress/SqlIngressTwo configuration keys; no values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:1499ca2a4a2da8e7f478813a6d85e83cca3c9f6edde6cfbdc57db28d4697a906"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.ingress.request",
+      "from": "comp:customerproject.ingress.import",
+      "to": "comp:customerproject.ingress.snapshot-requests",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CreateSnapshot commands",
+      "description": "Id/DataSource request after applicable import; not every incoming message necessarily creates output.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/Import/ChangeEventHandlerBase.cs",
+          "note": "Lines 16\u201320 and 44\u201352: shared import storage abstraction and snapshot command with Id/DataSource.",
+          "confidence": "confirmed",
+          "revision": "sha256:f3ed8223e1cc3c95e165a4ed48999e020eeeea39f16801b893151d6540ad798f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/Import/CustomerAddressChangedHandler.cs",
+          "note": "Lines 20\u201329: save change model; discarded or temporary addresses do not request a snapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:3526660f3514480f1f2c40b809540b1ee6c6fae777abbc6b541fdd8cd303f414"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Messaging/QueueClients/SnapshotQueueClient.cs",
+          "note": "Lines 12\u201321: snapshot sender configured by SnapshotQueue.",
+          "confidence": "confirmed",
+          "revision": "sha256:d59602a886714a0d8baf03281409383e9b4cf75b707d127e586d7f233b9ef4cd"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.ingress.address-requests",
+      "from": "comp:customerproject.ingress.snapshot-requests",
+      "to": "comp:customerproject.ingress.address-snapshots",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Address snapshot requests",
+      "description": "CustomerAddress, Customer and CustomerEmail change request families.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45\u201389: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.ingress.price-requests",
+      "from": "comp:customerproject.ingress.snapshot-requests",
+      "to": "comp:customerproject.ingress.price-snapshots",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Project-price snapshot requests",
+      "description": "CustomerAgreementHead, HeaderFile and QuotationOrderHead request families.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45\u201389: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.ingress.address-data",
+      "from": "comp:customerproject.ingress.storage",
+      "to": "comp:customerproject.ingress.address-snapshots",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Address/customer/email data",
+      "description": "Read-side snapshot query over ingress tables; arrow represents data supplied, not a method-call sequence.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 7\u201314, 77\u2013136, 184\u2013232: snapshot queries over persisted ingress models; not live ERP queries.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.ingress.price-data",
+      "from": "comp:customerproject.ingress.storage",
+      "to": "comp:customerproject.ingress.price-snapshots",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Agreement/quotation/header data",
+      "description": "Read-side project-price composition from ingress tables.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 7\u201314, 77\u2013136, 184\u2013232: snapshot queries over persisted ingress models; not live ERP queries.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.ingress.address-output",
+      "from": "comp:customerproject.ingress.address-snapshots",
+      "to": "comp:customerproject.ingress.domain-output",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "UpdateCustomerAddressFromSnapshot",
+      "description": "Batched snapshot-bearing domain updates.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerAddressChangedHandler.cs",
+          "note": "Lines 22\u201328: build CustomerAddressSnapshot and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:549fc6a251f67d065ab4590483109015bcaef103cbb0f6a91b977f521c2835a8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Messaging/QueueClients/DomainQueueClient.cs",
+          "note": "Lines 12\u201321: domain sender configured by DomainQueue.",
+          "confidence": "confirmed",
+          "revision": "sha256:ecdd772186bbf2e95c3c09af23809f4f15ab3218bc5a5ee15aed827e13baaea0"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.ingress.price-output",
+      "from": "comp:customerproject.ingress.price-snapshots",
+      "to": "comp:customerproject.ingress.domain-output",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "UpdateProjectWithPriceFromSnapshot",
+      "description": "Batched snapshot-bearing domain updates.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnHeaderFileChangedHandler.cs",
+          "note": "Lines 22\u201328: build ProjectWithPriceSnapshot and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:25646cbae890fb49b9d6249d4c54b9e50719e9a98a78523efcef8970e9c44978"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Messaging/QueueClients/DomainQueueClient.cs",
+          "note": "Lines 12\u201321: domain sender configured by DomainQueue.",
+          "confidence": "confirmed",
+          "revision": "sha256:ecdd772186bbf2e95c3c09af23809f4f15ab3218bc5a5ee15aed827e13baaea0"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

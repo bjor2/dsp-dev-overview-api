@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Slice 6: CLI over src/Dsp.DevOverview.RegistrationGenerator (the same library the API's
+       POST /registration/refresh runs in-process). Reads Terraform, the service repo and local-dev read-only. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GenerateRegistration</RootNamespace>
+    <AssemblyName>Generate-Registration</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Dsp.DevOverview.RegistrationGenerator\Dsp.DevOverview.RegistrationGenerator.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mirrors seed-messages/Program.cs into catalog/customerproject.samples.json. Uses the same contract
+       packages (versions resolved by dsp-customerproject-localrun) and the same runtime (net8.0) as the kit,
+       so the serialized bodies are what the kit puts on the wire. Never executes the kit. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
+    <PackageReference Include="Dahl.Core.Tenant" Version="2.0.15" />
+    <PackageReference Include="Dahl.M3.Event.Common" Version="1.0.7" />
+    <PackageReference Include="Dahl.M3.Event.CustomerAddressChanged.Contract" Version="1.0.10" />
+    <PackageReference Include="Dahl.M3.Event.CustomerAgreementHeadChanged.Contract" Version="1.0.10" />
+    <PackageReference Include="Dahl.M3.Event.CustomerChanged.Contract" Version="1.0.10" />
+    <PackageReference Include="Dahl.M3.Event.CustomerEmailChanged.Contract" Version="1.0.10" />
+    <PackageReference Include="Dahl.M3.Event.HeaderFileChanged.Contract" Version="1.0.10" />
+    <PackageReference Include="Dahl.M3.Event.QuotationOrderHeadChanged.Contract" Version="1.0.10" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Dsp.DevOverview.Catalog\Dsp.DevOverview.Catalog.csproj" />
+  </ItemGroup>
+</Project>

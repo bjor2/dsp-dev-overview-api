@@ -1,0 +1,747 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.api",
+  "project": "customerproject",
+  "title": "Api \u2014 HTTP entry points and their responsibilities",
+  "summary": "Inside the Api compute container: four controllers are the HTTP trigger surface; create/update, manual association and image services do synchronous work, while bulk/operator work is handed to Functions via the command queue. Arrows are responsibilities, not observed requests.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:customerproject.api"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T11:30:00+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+      "note": "api container with HTTP controllers handler.",
+      "confidence": "confirmed",
+      "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/Program.cs",
+      "note": "Lines 39\u201372: Okta authentication, storage, messaging, ingress queue client, ERP integration, image storage, API application features.",
+      "confidence": "confirmed",
+      "revision": "sha256:c754cf4865a7d8385fb02581257e9a665157fcfcf78081e4a2b4e36f2ea206ff"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Configuration/ServiceCollectionExtensions.cs",
+      "note": "Lines 17\u201349: AddApplicationFeatures (Functions) vs AddApiApplicationFeatures (API); CustomerProjectService and ManualAssociationService are registered only for the API.",
+      "confidence": "confirmed",
+      "revision": "sha256:aee0f35199a16fc68fa3f58c33d7d5af4ef724d3f687f97326923aa1269d3f21"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779513",
+      "revision": "version:4",
+      "confidence": "confirmed",
+      "note": "2023 workshop domain context (project vs delivery address, CUNO/ADID). Not implementation evidence."
+    }
+  ],
+  "uncertainties": [
+    "Api Program registers an ingress queue client (Program.cs line 69) but no controller or API feature use was found in reviewed files; not drawn.",
+    "Okta authentication and tenant filters are named from Program.cs; policy details are not modelled.",
+    "Confluence 22779513 (v4) workshop scope may describe UI flows not implemented here; no UI-side components are drawn."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.api.callers",
+      "label": "HTTP callers (Okta)",
+      "kind": "external",
+      "responsibility": "Authenticated web/API clients; HTTP is the trigger surface of this container.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/Program.cs",
+          "note": "Lines 39\u201372: Okta authentication, storage, messaging, ingress queue client, ERP integration, image storage, API application features.",
+          "confidence": "confirmed",
+          "revision": "sha256:c754cf4865a7d8385fb02581257e9a665157fcfcf78081e4a2b4e36f2ea206ff"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "customerproject.api.http handler.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [
+        "Concrete client applications are not evidenced in this repo."
+      ]
+    },
+    {
+      "id": "comp:customerproject.api.project-controller",
+      "label": "CustomerProject controller",
+      "kind": "component",
+      "responsibility": "Tenant-scoped project read/search, create/update, and operator endpoints that only enqueue commands (import, import-contacts, import-order-references, create-missing-projects, synchronize-project-dates).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs",
+          "note": "Lines 22\u2013306: tenant-scoped project reads/search, create (POST) and update (PUT) via ICustomerProjectService, and admin/import POSTs that only enqueue commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:e38c5bc48caa1b2eb8866acd9e2d6955c28670481c21d62a9f48495716947604"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.api.order-association-controller",
+      "label": "OrderAssociation controller",
+      "kind": "component",
+      "responsibility": "Manual order\u2194project association/removal and populate-orders trigger.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/OrderAssociationController.cs",
+          "note": "Lines 20\u2013119: manual associate/remove via IManualAssociationService; populate enqueues PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:6a63d7d608c8ad6eecb6d02cf56cb9b14a62461deedf9cc46c6a54905dc7e2d4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.api.image-controller",
+      "label": "Image controller",
+      "kind": "component",
+      "responsibility": "Project image read/list/upload/delete and send-import-command.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/ImageController.cs",
+          "note": "Lines 20\u2013181: image read/list/upload/delete via IImageService; send-import-command enqueues ImportImage.",
+          "confidence": "confirmed",
+          "revision": "sha256:b2ea25fd502e0f013d48facec8645e7599ff1a8262e18f260d16b09c40ba9847"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.api.environmental-profile-controller",
+      "label": "EnvironmentalProfile controller",
+      "kind": "component",
+      "responsibility": "Maintains the environmental profile list directly in storage.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/EnvironmentalProfileController.cs",
+          "note": "Lines 15\u201384: environmental profile upsert/list/delete directly against storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:dd26b0a385e4ef71d7e9edeceb3f6b6ea0379d90cf1a55bd0fa7117c6fe102e1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.api.project-service",
+      "label": "Project create/update service",
+      "kind": "component",
+      "responsibility": "Validates projects, creates/updates the delivery address in ERP, upserts the project, publishes CustomerProjectChanged and requests PopulateOrderReferences.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37\u2013227: validate, create/update ERP address, upsert project, publish CustomerProjectChanged, enqueue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Configuration/ServiceCollectionExtensions.cs",
+          "note": "Lines 17\u201349: AddApplicationFeatures (Functions) vs AddApiApplicationFeatures (API); CustomerProjectService and ManualAssociationService are registered only for the API.",
+          "confidence": "confirmed",
+          "revision": "sha256:aee0f35199a16fc68fa3f58c33d7d5af4ef724d3f687f97326923aa1269d3f21"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.api.manual-association",
+      "label": "Manual association service",
+      "kind": "component",
+      "responsibility": "Applies manual order associations, upserts OrderReferences and publishes CustomerProjectOrderReferenceChanged.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ManualAssociationService.cs",
+          "note": "Lines 23\u2013126: manual order association/removal, OrderReference upsert, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:23696f644a53907cc066d2ec105af374cb8a07cd05d49ecd4eef8b681e0fda83"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.api.image-service",
+      "label": "Image service",
+      "kind": "component",
+      "responsibility": "Processes and stores images in blob, image metadata in SQL.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/CustomerProjectImageService.cs",
+          "note": "Lines 18\u201375: read/upload/remove project images: blob via IImageStorage, metadata via storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:525fd5803498731be870f0fae8acbd7d7701b81ffe88da10dba5e468fc52c391"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Images/ImageStorage.cs",
+          "note": "Lines 18\u201351: processes (checksum/metadata strip) and uploads/removes blobs.",
+          "confidence": "confirmed",
+          "revision": "sha256:3446c03abd16465f0a3f996b595ab1451e2c4c127998ab55c7a08582f180a1a1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.api.storage",
+      "label": "CustomerProject SQL storage",
+      "kind": "store",
+      "responsibility": "Same SQL storage as Functions (shared database, separate host).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Storage/CustomerProjectStorageDbContext.cs",
+          "note": "EF DbContext for CustomerProject SQL storage; no connection values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:040140df0013f7b43f5b5a1c14ebdedacb69e06448e1511a096393df3c972a98"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/Program.cs",
+          "note": "Lines 39\u201372: Okta authentication, storage, messaging, ingress queue client, ERP integration, image storage, API application features.",
+          "confidence": "confirmed",
+          "revision": "sha256:c754cf4865a7d8385fb02581257e9a665157fcfcf78081e4a2b4e36f2ea206ff"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject"
+    },
+    {
+      "id": "comp:customerproject.api.commands-out",
+      "label": "Command queue",
+      "kind": "external",
+      "responsibility": "Boundary output to Functions COMMANDS.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Messaging/CustomerProjectQueueClient.cs",
+          "note": "Lines 14\u201318: queue sender configured by CustomerProjectQueue.",
+          "confidence": "confirmed",
+          "revision": "sha256:4e41e9122e32bd1c1eebc082ddc49d494ece9bc3fc687eb408a4ac7928f98c65"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs",
+          "note": "Lines 22\u2013306: tenant-scoped project reads/search, create (POST) and update (PUT) via ICustomerProjectService, and admin/import POSTs that only enqueue commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:e38c5bc48caa1b2eb8866acd9e2d6955c28670481c21d62a9f48495716947604"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "api.http publishes commands to q:customerproject.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "q:customerproject"
+    },
+    {
+      "id": "comp:customerproject.api.topic",
+      "label": "CustomerProject topic",
+      "kind": "external",
+      "responsibility": "Boundary output for project and order-reference events.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Messaging/CustomerProjectTopicClient.cs",
+          "note": "Lines 16\u201322: topic sender configured by CustomerProjectTopic.",
+          "confidence": "confirmed",
+          "revision": "sha256:b48d4c7ad3a27592d873cb9556ea06d4ff64fc91820475e664785fd8b33fa642"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37\u2013227: validate, create/update ERP address, upsert project, publish CustomerProjectChanged, enqueue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ManualAssociationService.cs",
+          "note": "Lines 23\u2013126: manual order association/removal, OrderReference upsert, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:23696f644a53907cc066d2ec105af374cb8a07cd05d49ecd4eef8b681e0fda83"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "api.http publishes to t:customerproject-topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "t:customerproject-topic"
+    },
+    {
+      "id": "comp:customerproject.api.erp",
+      "label": "ERP customer-address API",
+      "kind": "external",
+      "responsibility": "External M3 ERP address create/update.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Erp/ErpCustomerAddressClient.cs",
+          "note": "Lines 29\u2013126: ERP customer-address create, existing-id lookup and update calls.",
+          "confidence": "confirmed",
+          "revision": "sha256:b7fd4acb31aab3c3f01475746e0c9d2acc55e6a34d5cf2f02d2a3a8a112ed6b8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/Program.cs",
+          "note": "Lines 39\u201372: Okta authentication, storage, messaging, ingress queue client, ERP integration, image storage, API application features.",
+          "confidence": "confirmed",
+          "revision": "sha256:c754cf4865a7d8385fb02581257e9a665157fcfcf78081e4a2b4e36f2ea206ff"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.api.image-blob",
+      "label": "Image blob storage",
+      "kind": "store",
+      "responsibility": "Processed project images.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Images/BlobStorage/BlobStorageClient.cs",
+          "note": "Lines 8\u201376: Azure Blob container client download/upload/delete.",
+          "confidence": "confirmed",
+          "revision": "sha256:f4d1964367af090842ddeb86cd9a35a72d54d52f20b2acca19f0e9f62070c0b3"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.api.http-projects",
+      "from": "comp:customerproject.api.callers",
+      "to": "comp:customerproject.api.project-controller",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Project HTTP",
+      "description": "Requests; not observed traffic.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs",
+          "note": "Lines 22\u2013306: tenant-scoped project reads/search, create (POST) and update (PUT) via ICustomerProjectService, and admin/import POSTs that only enqueue commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:e38c5bc48caa1b2eb8866acd9e2d6955c28670481c21d62a9f48495716947604"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.http-orders",
+      "from": "comp:customerproject.api.callers",
+      "to": "comp:customerproject.api.order-association-controller",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Order association HTTP",
+      "description": "Requests.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/OrderAssociationController.cs",
+          "note": "Lines 20\u2013119: manual associate/remove via IManualAssociationService; populate enqueues PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:6a63d7d608c8ad6eecb6d02cf56cb9b14a62461deedf9cc46c6a54905dc7e2d4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.http-images",
+      "from": "comp:customerproject.api.callers",
+      "to": "comp:customerproject.api.image-controller",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Image HTTP",
+      "description": "Requests incl. multipart upload.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/ImageController.cs",
+          "note": "Lines 20\u2013181: image read/list/upload/delete via IImageService; send-import-command enqueues ImportImage.",
+          "confidence": "confirmed",
+          "revision": "sha256:b2ea25fd502e0f013d48facec8645e7599ff1a8262e18f260d16b09c40ba9847"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.http-env",
+      "from": "comp:customerproject.api.callers",
+      "to": "comp:customerproject.api.environmental-profile-controller",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Environmental profile HTTP",
+      "description": "Requests.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/EnvironmentalProfileController.cs",
+          "note": "Lines 15\u201384: environmental profile upsert/list/delete directly against storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:dd26b0a385e4ef71d7e9edeceb3f6b6ea0379d90cf1a55bd0fa7117c6fe102e1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.projects-read",
+      "from": "comp:customerproject.api.project-controller",
+      "to": "comp:customerproject.api.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Project reads",
+      "description": "Read/search via storage reader.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs",
+          "note": "Lines 22\u2013306: tenant-scoped project reads/search, create (POST) and update (PUT) via ICustomerProjectService, and admin/import POSTs that only enqueue commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:e38c5bc48caa1b2eb8866acd9e2d6955c28670481c21d62a9f48495716947604"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.projects-write",
+      "from": "comp:customerproject.api.project-controller",
+      "to": "comp:customerproject.api.project-service",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Create / update",
+      "description": "POST/PUT delegate to ICustomerProjectService.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs",
+          "note": "Lines 22\u2013306: tenant-scoped project reads/search, create (POST) and update (PUT) via ICustomerProjectService, and admin/import POSTs that only enqueue commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:e38c5bc48caa1b2eb8866acd9e2d6955c28670481c21d62a9f48495716947604"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.projects-cmd",
+      "from": "comp:customerproject.api.project-controller",
+      "to": "comp:customerproject.api.commands-out",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Operator commands",
+      "description": "ImportCustomerProjects, ImportProjectContactsList, ImportOrderReferencesForProjects, CreateMissingProjects, SyncProjectDates.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/CustomerProjectController.cs",
+          "note": "Lines 22\u2013306: tenant-scoped project reads/search, create (POST) and update (PUT) via ICustomerProjectService, and admin/import POSTs that only enqueue commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:e38c5bc48caa1b2eb8866acd9e2d6955c28670481c21d62a9f48495716947604"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.service-erp",
+      "from": "comp:customerproject.api.project-service",
+      "to": "comp:customerproject.api.erp",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Address create/update",
+      "description": "ERP first, then local upsert.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37\u2013227: validate, create/update ERP address, upsert project, publish CustomerProjectChanged, enqueue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/ErpAddress/ErpAddressService.cs",
+          "note": "Lines 20\u201372: candidate AddressId calculation, ERP create/update via IErpCustomerAddressClient.",
+          "confidence": "confirmed",
+          "revision": "sha256:edbd5e6e72746764f41517746fba551c8fc2ec5ece9fa855b94dbec422ff18f1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.service-store",
+      "from": "comp:customerproject.api.project-service",
+      "to": "comp:customerproject.api.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Projects",
+      "description": "Upsert.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37\u2013227: validate, create/update ERP address, upsert project, publish CustomerProjectChanged, enqueue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.service-topic",
+      "from": "comp:customerproject.api.project-service",
+      "to": "comp:customerproject.api.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CustomerProjectChanged",
+      "description": "After create/update.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37\u2013227: validate, create/update ERP address, upsert project, publish CustomerProjectChanged, enqueue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.service-cmd",
+      "from": "comp:customerproject.api.project-service",
+      "to": "comp:customerproject.api.commands-out",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "PopulateOrderReferences",
+      "description": "Follow-up for Functions.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37\u2013227: validate, create/update ERP address, upsert project, publish CustomerProjectChanged, enqueue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.orders-assoc",
+      "from": "comp:customerproject.api.order-association-controller",
+      "to": "comp:customerproject.api.manual-association",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Associate / remove",
+      "description": "Manual association.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/OrderAssociationController.cs",
+          "note": "Lines 20\u2013119: manual associate/remove via IManualAssociationService; populate enqueues PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:6a63d7d608c8ad6eecb6d02cf56cb9b14a62461deedf9cc46c6a54905dc7e2d4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.orders-cmd",
+      "from": "comp:customerproject.api.order-association-controller",
+      "to": "comp:customerproject.api.commands-out",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "PopulateOrderReferences",
+      "description": "orders/populate endpoint.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/OrderAssociationController.cs",
+          "note": "Lines 20\u2013119: manual associate/remove via IManualAssociationService; populate enqueues PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:6a63d7d608c8ad6eecb6d02cf56cb9b14a62461deedf9cc46c6a54905dc7e2d4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.assoc-store",
+      "from": "comp:customerproject.api.manual-association",
+      "to": "comp:customerproject.api.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "OrderReferences",
+      "description": "Upsert.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ManualAssociationService.cs",
+          "note": "Lines 23\u2013126: manual order association/removal, OrderReference upsert, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:23696f644a53907cc066d2ec105af374cb8a07cd05d49ecd4eef8b681e0fda83"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.assoc-topic",
+      "from": "comp:customerproject.api.manual-association",
+      "to": "comp:customerproject.api.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CustomerProjectOrderReferenceChanged",
+      "description": "Published on change.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ManualAssociationService.cs",
+          "note": "Lines 23\u2013126: manual order association/removal, OrderReference upsert, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:23696f644a53907cc066d2ec105af374cb8a07cd05d49ecd4eef8b681e0fda83"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.images-svc",
+      "from": "comp:customerproject.api.image-controller",
+      "to": "comp:customerproject.api.image-service",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Image operations",
+      "description": "Read/upload/remove.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/ImageController.cs",
+          "note": "Lines 20\u2013181: image read/list/upload/delete via IImageService; send-import-command enqueues ImportImage.",
+          "confidence": "confirmed",
+          "revision": "sha256:b2ea25fd502e0f013d48facec8645e7599ff1a8262e18f260d16b09c40ba9847"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.images-cmd",
+      "from": "comp:customerproject.api.image-controller",
+      "to": "comp:customerproject.api.commands-out",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "ImportImage",
+      "description": "send-import-command endpoint.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/ImageController.cs",
+          "note": "Lines 20\u2013181: image read/list/upload/delete via IImageService; send-import-command enqueues ImportImage.",
+          "confidence": "confirmed",
+          "revision": "sha256:b2ea25fd502e0f013d48facec8645e7599ff1a8262e18f260d16b09c40ba9847"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.images-blob",
+      "from": "comp:customerproject.api.image-service",
+      "to": "comp:customerproject.api.image-blob",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Image files",
+      "description": "Blob upload/delete.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/CustomerProjectImageService.cs",
+          "note": "Lines 18\u201375: read/upload/remove project images: blob via IImageStorage, metadata via storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:525fd5803498731be870f0fae8acbd7d7701b81ffe88da10dba5e468fc52c391"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Images/ImageStorage.cs",
+          "note": "Lines 18\u201351: processes (checksum/metadata strip) and uploads/removes blobs.",
+          "confidence": "confirmed",
+          "revision": "sha256:3446c03abd16465f0a3f996b595ab1451e2c4c127998ab55c7a08582f180a1a1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.images-meta",
+      "from": "comp:customerproject.api.image-service",
+      "to": "comp:customerproject.api.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Image metadata",
+      "description": "Project image rows.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/CustomerProjectImageService.cs",
+          "note": "Lines 18\u201375: read/upload/remove project images: blob via IImageStorage, metadata via storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:525fd5803498731be870f0fae8acbd7d7701b81ffe88da10dba5e468fc52c391"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.api.env-store",
+      "from": "comp:customerproject.api.environmental-profile-controller",
+      "to": "comp:customerproject.api.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Environmental profiles",
+      "description": "Direct read/write.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Api/V1/Controllers/EnvironmentalProfileController.cs",
+          "note": "Lines 15\u201384: environmental profile upsert/list/delete directly against storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:dd26b0a385e4ef71d7e9edeceb3f6b6ea0379d90cf1a55bd0fa7117c6fe102e1"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

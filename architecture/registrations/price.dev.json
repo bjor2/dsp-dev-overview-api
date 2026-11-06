@@ -1,1334 +1,1588 @@
 {
-  "id": "price.dev",
-  "project": "price",
-  "env": "dev",
-  "schemaVersion": 2,
-  "generatedAt": "2026-11-04T12:33:44Z",
-  "sources": [
-    {
-      "kind": "trigger-scan",
-      "path": "/workspace/dsp/dsp-price/src",
-      "commit": "51f4830 (per brief; box copy is not a git repo)"
-    },
-    {
-      "kind": "local-config",
-      "path": "/workspace/dsp/dsp-price/infrastructure/local-shared.bicep"
-    },
-    {
-      "kind": "local-config",
-      "path": "/workspace/dsp/dsp-price/infrastructure/local-price.bicep"
-    },
-    {
-      "kind": "local-config",
-      "path": "/workspace/dsp/dsp-price/src/Dahl.Price.Functions/local.settings.json"
-    },
-    {
-      "kind": "local-config",
-      "path": "/workspace/dsp/dsp-price/src/Dahl.Price.Ingress.Functions/local.settings.json"
-    },
-    {
-      "kind": "terraform",
-      "path": "/workspace/dsp/dsp-price/azure-pipelines.yml"
-    }
-  ],
-  "apps": [
-    {
-      "id": "app:api",
-      "name": "Api",
-      "kind": "web",
-      "azureResource": "web-870-dev-euw-dahl-price",
-      "cloudRoleName": "web-870-dev-euw-dahl-price",
-      "local": {
-        "port": 52161,
-        "url": "https://localhost:52161/swagger"
-      },
-      "namingNote": "Site names from azure-pipelines.yml:165-169; cloudRoleName = site name (default) - confirm in AI. No run script (no /workspace/dsp/local-dev/price)."
-    },
-    {
-      "id": "app:api-batch",
-      "name": "Api.Batch",
-      "kind": "web",
-      "azureResource": "web-870-dev-euw-dahl-pricebatch",
-      "cloudRoleName": "web-870-dev-euw-dahl-pricebatch",
-      "local": {
-        "port": 52171
-      },
-      "namingNote": "Site names from azure-pipelines.yml:165-169; cloudRoleName = site name (default) - confirm in AI. No run script (no /workspace/dsp/local-dev/price)."
-    },
-    {
-      "id": "app:functions",
-      "name": "Functions",
-      "kind": "func",
-      "azureResource": "func-870-dev-euw-dahl-price",
-      "cloudRoleName": "func-870-dev-euw-dahl-price",
-      "local": {
-        "port": 7073
-      },
-      "namingNote": "Site names from azure-pipelines.yml:165-169; cloudRoleName = site name (default) - confirm in AI. No run script (no /workspace/dsp/local-dev/price)."
-    },
-    {
-      "id": "app:ingress",
-      "name": "Ingress",
-      "kind": "func-ingress",
-      "azureResource": "func-870-dev-euw-dahl-price-ingress",
-      "cloudRoleName": "func-870-dev-euw-dahl-price-ingress",
-      "local": {},
-      "namingNote": "Site names from azure-pipelines.yml:165-169; cloudRoleName = site name (default) - confirm in AI. No run script (no /workspace/dsp/local-dev/price)."
-    }
-  ],
-  "containers": [
-    {
-      "id": "container:price.api",
-      "label": "Api :52161",
-      "kind": "resource",
-      "resourceRefs": [
-        "app:api"
-      ]
-    },
-    {
-      "id": "container:price.api-batch",
-      "label": "Api.Batch :52171",
-      "kind": "resource",
-      "resourceRefs": [
-        "app:api-batch"
-      ]
-    },
-    {
-      "id": "container:price.func-app",
-      "label": "Functions :7073",
-      "kind": "resource",
-      "resourceRefs": [
-        "app:functions"
-      ]
-    },
-    {
-      "id": "container:price.ingress-app",
-      "label": "Ingress (port ?)",
-      "kind": "resource",
-      "resourceRefs": [
-        "app:ingress"
-      ]
-    }
-  ],
-  "handlers": [
-    {
-      "id": "price.api.http",
-      "label": "HTTP controllers",
-      "appId": "app:api",
-      "containerId": "container:price.api",
-      "triggers": [
-        {
-          "kind": "http",
-          "sourceFile": "src/Dahl.Price.Api"
-        }
-      ]
-    },
-    {
-      "id": "price.api-batch.http",
-      "label": "HTTP (batch)",
-      "appId": "app:api-batch",
-      "containerId": "container:price.api-batch",
-      "triggers": [
-        {
-          "kind": "http",
-          "sourceFile": "src/Dahl.Price.Api.Batch"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.commands",
-      "label": "COMMANDS",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "PriceQueueHandler",
-          "entityId": "q:price",
-          "setting": "ServiceBusPriceQueue",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs:72"
-        }
-      ],
-      "selfRequeue": [
-        {
-          "entityId": "q:price",
-          "messages": [
-            "VisionPointUpdatePriceListTableCampaign"
-          ],
-          "sources": [
-            "src/Dahl.Price.Application/Features/Import/VisionPoint/ImportVisionPointCampaignItemHandler.cs:45"
-          ],
-          "generated": true
-        }
-      ]
-    },
-    {
-      "id": "price.fn.domain",
-      "label": "DOMAIN",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "PriceDomainQueueHandler",
-          "entityId": "q:price-domain",
-          "setting": "ServiceBusPriceDomainQueue",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/PriceDomainQueueHandler.cs:39"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.domain-ingress",
-      "label": "DOMAIN (PICO direct)",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "PriceDomainIngressQueueHandler",
-          "entityId": "q:price-domain-ingress",
-          "setting": "ServiceBusPriceDomainIngressQueue",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/PriceDomainIngressQueueHandler.cs:65"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.subscriptions",
-      "label": "SUBSCRIPTIONS",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "PriceSubscriptionsHandler",
-          "entityId": "q:price-subscriptions",
-          "setting": "ServiceBusPriceSubscriptionsQueue",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/PriceSubscriptionsHandler.cs:22"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.sub-customerproject",
-      "label": "CUSTOMERPROJECT sub",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "CustomerProjectSubscriptionTrigger",
-          "entityId": "s:customerproject-topic/price-to-customerproject-subscription",
-          "setting": "ServiceBusCustomerProjectSubscription",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/CustomerProjectSubscriptionTrigger.cs:27"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.sub-customer",
-      "label": "CUSTOMER sub",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "CustomerSubscriptionTrigger",
-          "entityId": "s:customer-topic/price-to-customer-subscription",
-          "setting": "ServiceBusCustomerSubscription",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/CustomerSubscriptionTrigger.cs:26"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.sub-warehouse",
-      "label": "WAREHOUSE sub",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "WarehouseSubscriptionTrigger",
-          "entityId": "s:warehouse-topic/price-to-warehouse-subscription",
-          "setting": "ServiceBusWarehouseSubscription",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/WarehouseSubscriptionTrigger.cs:18"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.sub-currency",
-      "label": "CURRENCY sub",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "CurrencySubscriptionTrigger",
-          "entityId": "s:currency-topic/price-to-currency-subscription",
-          "setting": "ServiceBusCurrencySubscription",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/CurrencySubscriptionTrigger.cs:17"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.sub-product",
-      "label": "PRODUCT sub",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "ProductSubscriptionTrigger",
-          "entityId": "s:product-topic/price-to-product-subscription",
-          "setting": "ServiceBusProductSubscription",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/ProductSubscriptionTrigger.cs:18"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.blob-optimera",
-      "label": "OPTIMERA FILE",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "blob",
-          "function": "OptimeraSnapshotFileBlobTrigger",
-          "path": "pricedumpfromoptimera/{filename}",
-          "connection": "PriceStorageAccount",
-          "entityId": "b:pricedumpfromoptimera",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs:17"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.timer-snapshot",
-      "label": "LOWEST PRICE SNAPSHOT",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "timer",
-          "function": "PriceSnapshotTimerTrigger",
-          "schedule": "0 0 4,12,17 * * *",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/PriceSnapshotTimerTrigger.cs:16"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.timer-check-campaigns",
-      "label": "CHECK CAMPAIGNS",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "timer",
-          "function": "CheckItemCampaignsTimerTrigger",
-          "schedule": "0 0 * * * *",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/CheckItemCampaignsTimerTrigger.cs:21"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.timer-campaign-lowest",
-      "label": "CAMPAIGN LOWEST PRICES",
-      "appId": "app:functions",
-      "containerId": "container:price.func-app",
-      "triggers": [
-        {
-          "kind": "timer",
-          "function": "PriceCampaignLowestPricesTimerTrigger",
-          "schedule": "0 15 4,12,17 * * *",
-          "sourceFile": "src/Dahl.Price.Functions/Functions/PriceCampaignLowestPricesTimerTrigger.cs:21"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.ingress",
-      "label": "INGRESS",
-      "appId": "app:ingress",
-      "containerId": "container:price.ingress-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "PriceIngressQueueHandler",
-          "entityId": "q:price-ingress",
-          "setting": "ServiceBusPriceIngressQueue",
-          "connection": "ServiceBusConnectionString",
-          "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs:47"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.snapshot",
-      "label": "SNAPSHOT",
-      "appId": "app:ingress",
-      "containerId": "container:price.ingress-app",
-      "triggers": [
-        {
-          "kind": "servicebus",
-          "function": "PriceSnapshotQueueHandler",
-          "entityId": "q:price-snapshot",
-          "setting": "ServiceBusPriceSnapshotQueue",
-          "connection": "ServiceBusNamespace",
-          "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs:32"
-        }
-      ]
-    },
-    {
-      "id": "price.fn.timer-reload-m3cloud",
-      "label": "RELOAD M3CLOUD (6 timers)",
-      "appId": "app:ingress",
-      "containerId": "container:price.ingress-app",
-      "triggers": [
-        {
-          "kind": "timer",
-          "function": "RunOptimeraCampaignTimerTrigger",
-          "setting": "ReloadM3CloudOptimeraCampaignTimerTrigger",
-          "schedule": "0 5 2 * * *",
-          "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:15"
-        },
-        {
-          "kind": "timer",
-          "function": "RunOptimeraCampaignPriceTimerTrigger",
-          "setting": "ReloadM3CloudOptimeraCampaignPriceTimerTrigger",
-          "schedule": "0 7 2 * * *",
-          "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:30"
-        },
-        {
-          "kind": "timer",
-          "function": "RunOptimeraOfferPriceTimerTrigger",
-          "setting": "ReloadM3CloudOptimeraOfferPriceTimerTrigger",
-          "schedule": "0 10 2 * * *",
-          "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:45"
-        },
-        {
-          "kind": "timer",
-          "function": "RunOptimeraPriceListTimerTrigger",
-          "setting": "ReloadM3CloudOptimeraPriceListTimerTrigger",
-          "schedule": "0 12 2 * * *",
-          "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:60"
-        },
-        {
-          "kind": "timer",
-          "function": "RunOptimeraPriceListTableCampaignTimerTrigger",
-          "setting": "ReloadM3CloudOptimeraPriceListTableCampaignTimerTrigger",
-          "schedule": "0 15 2 * * *",
-          "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:75"
-        },
-        {
-          "kind": "timer",
-          "function": "RunOptimeraPriceListTablePriceListTimerTrigger",
-          "setting": "ReloadM3CloudOptimeraPriceListTablePriceListTimerTrigger",
-          "schedule": "0 18 2 * * *",
-          "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:90"
-        }
-      ]
-    }
-  ],
-  "entities": [
-    {
-      "id": "q:price",
-      "kind": "queue",
-      "localName": "price",
-      "cloudName": "sbq-870-dev-euw-dahl-shared-price",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10,
-      "cloudMaxDeliveryCount": 3
-    },
-    {
-      "id": "q:price-ingress",
-      "kind": "queue",
-      "localName": "price-ingress",
-      "cloudName": "sbq-870-dev-euw-dahl-shared-price-ingress",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10,
-      "cloudMaxDeliveryCount": 3
-    },
-    {
-      "id": "q:price-snapshot",
-      "kind": "queue",
-      "localName": "price-snapshot",
-      "cloudName": "sbq-870-dev-euw-dahl-shared-price-snapshot",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10,
-      "cloudMaxDeliveryCount": 3
-    },
-    {
-      "id": "q:price-domain",
-      "kind": "queue",
-      "localName": "price-domain",
-      "cloudName": "sbq-870-dev-euw-dahl-shared-price-domain",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10,
-      "cloudMaxDeliveryCount": 3
-    },
-    {
-      "id": "q:price-domain-ingress",
-      "kind": "queue",
-      "localName": "price-domain-ingress",
-      "cloudName": "sbq-870-dev-euw-dahl-shared-price-domain-ingress",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10,
-      "cloudMaxDeliveryCount": 3
-    },
-    {
-      "id": "q:price-subscriptions",
-      "kind": "queue",
-      "localName": "price-subscriptions",
-      "cloudName": "sbq-870-dev-euw-dahl-shared-price-subscriptions",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10,
-      "cloudMaxDeliveryCount": 3
-    },
-    {
-      "id": "t:price",
-      "kind": "topic",
-      "localName": "price",
-      "cloudName": "sbt-870-dev-euw-dahl-shared-price",
-      "owner": "project",
-      "scope": "both"
-    },
-    {
-      "id": "t:customerproject-topic",
-      "kind": "topic",
-      "localName": "customerproject",
-      "cloudName": "sbt-870-dev-euw-dahl-shared-customerproject",
-      "owner": "shared",
-      "scope": "both"
-    },
-    {
-      "id": "s:customerproject-topic/price-to-customerproject-subscription",
-      "kind": "subscription",
-      "localName": "price-to-customerproject-subscription",
-      "topic": "t:customerproject-topic",
-      "cloudName": "price-to-customerproject-subscription",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:customer-topic",
-      "kind": "topic",
-      "localName": "customer",
-      "cloudName": "sbt-870-dev-euw-dahl-shared-customer",
-      "owner": "shared",
-      "scope": "both"
-    },
-    {
-      "id": "s:customer-topic/price-to-customer-subscription",
-      "kind": "subscription",
-      "localName": "price-to-customer-subscription",
-      "topic": "t:customer-topic",
-      "cloudName": "price-to-customer-subscription",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:warehouse-topic",
-      "kind": "topic",
-      "localName": "warehouse",
-      "cloudName": "sbt-870-dev-euw-dahl-shared-warehouse",
-      "owner": "shared",
-      "scope": "both"
-    },
-    {
-      "id": "s:warehouse-topic/price-to-warehouse-subscription",
-      "kind": "subscription",
-      "localName": "price-to-warehouse-subscription",
-      "topic": "t:warehouse-topic",
-      "cloudName": "price-to-warehouse-subscription",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:currency-topic",
-      "kind": "topic",
-      "localName": "currency",
-      "cloudName": "sbt-870-dev-euw-dahl-shared-currency",
-      "owner": "shared",
-      "scope": "both"
-    },
-    {
-      "id": "s:currency-topic/price-to-currency-subscription",
-      "kind": "subscription",
-      "localName": "price-to-currency-subscription",
-      "topic": "t:currency-topic",
-      "cloudName": "price-to-currency-subscription",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:product-topic",
-      "kind": "topic",
-      "localName": "product",
-      "cloudName": "sbt-870-dev-euw-dahl-shared-product",
-      "owner": "shared",
-      "scope": "both"
-    },
-    {
-      "id": "s:product-topic/price-to-product-subscription",
-      "kind": "subscription",
-      "localName": "price-to-product-subscription",
-      "topic": "t:product-topic",
-      "cloudName": "price-to-product-subscription",
-      "owner": "project",
-      "scope": "both",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:assortment",
-      "kind": "topic",
-      "localName": "assortment",
-      "cloudName": null,
-      "owner": "shared",
-      "scope": "local"
-    },
-    {
-      "id": "s:assortment/price-to-assortment-subscription",
-      "kind": "subscription",
-      "localName": "price-to-assortment-subscription",
-      "topic": "t:assortment",
-      "forwardTo": "q:price-ingress",
-      "cloudName": null,
-      "owner": "project",
-      "scope": "local",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:customeragreementhead",
-      "kind": "topic",
-      "localName": "customeragreementhead",
-      "cloudName": null,
-      "owner": "shared",
-      "scope": "local"
-    },
-    {
-      "id": "s:customeragreementhead/price-to-customeragreementhead-subscription",
-      "kind": "subscription",
-      "localName": "price-to-customeragreementhead-subscription",
-      "topic": "t:customeragreementhead",
-      "forwardTo": "q:price-ingress",
-      "cloudName": null,
-      "owner": "project",
-      "scope": "local",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:headerfile",
-      "kind": "topic",
-      "localName": "headerfile",
-      "cloudName": null,
-      "owner": "shared",
-      "scope": "local"
-    },
-    {
-      "id": "s:headerfile/price-to-headerfile-subscription",
-      "kind": "subscription",
-      "localName": "price-to-headerfile-subscription",
-      "topic": "t:headerfile",
-      "forwardTo": "q:price-ingress",
-      "cloudName": null,
-      "owner": "project",
-      "scope": "local",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:linefile",
-      "kind": "topic",
-      "localName": "linefile",
-      "cloudName": null,
-      "owner": "shared",
-      "scope": "local"
-    },
-    {
-      "id": "s:linefile/price-to-linefile-subscription",
-      "kind": "subscription",
-      "localName": "price-to-linefile-subscription",
-      "topic": "t:linefile",
-      "forwardTo": "q:price-ingress",
-      "cloudName": null,
-      "owner": "project",
-      "scope": "local",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:quotationorderhead",
-      "kind": "topic",
-      "localName": "quotationorderhead",
-      "cloudName": null,
-      "owner": "shared",
-      "scope": "local"
-    },
-    {
-      "id": "s:quotationorderhead/price-to-quotationorderhead-subscription",
-      "kind": "subscription",
-      "localName": "price-to-quotationorderhead-subscription",
-      "topic": "t:quotationorderhead",
-      "forwardTo": "q:price-ingress",
-      "cloudName": null,
-      "owner": "project",
-      "scope": "local",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:salepricelist",
-      "kind": "topic",
-      "localName": "salepricelist",
-      "cloudName": null,
-      "owner": "shared",
-      "scope": "local"
-    },
-    {
-      "id": "s:salepricelist/price-to-salepricelist-subscription",
-      "kind": "subscription",
-      "localName": "price-to-salepricelist-subscription",
-      "topic": "t:salepricelist",
-      "forwardTo": "q:price-ingress",
-      "cloudName": null,
-      "owner": "project",
-      "scope": "local",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:supplier",
-      "kind": "topic",
-      "localName": "supplier",
-      "cloudName": null,
-      "owner": "shared",
-      "scope": "local"
-    },
-    {
-      "id": "s:supplier/price-to-supplier-subscription",
-      "kind": "subscription",
-      "localName": "price-to-supplier-subscription",
-      "topic": "t:supplier",
-      "forwardTo": "q:price-ingress",
-      "cloudName": null,
-      "owner": "project",
-      "scope": "local",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "t:systemtablefile",
-      "kind": "topic",
-      "localName": "systemtablefile",
-      "cloudName": null,
-      "owner": "shared",
-      "scope": "local"
-    },
-    {
-      "id": "s:systemtablefile/price-to-systemtablefile-subscription",
-      "kind": "subscription",
-      "localName": "price-to-systemtablefile-subscription",
-      "topic": "t:systemtablefile",
-      "forwardTo": "q:price-ingress",
-      "cloudName": null,
-      "owner": "project",
-      "scope": "local",
-      "maxDeliveryCount": 10
-    },
-    {
-      "id": "b:pricedumpfromoptimera",
-      "kind": "blobContainer",
-      "localName": "pricedumpfromoptimera",
-      "storageAccountTemplate": "stlocaldahl{developer}price (developer-local-azure, infrastructure/local-price.bicep:10); cloud name unknown",
-      "owner": "project",
-      "scope": "both"
-    }
-  ],
-  "edges": [
-    {
-      "from": "q:price",
-      "to": "price.fn.commands",
-      "kind": "trigger",
-      "label": "PriceQueueHandler",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs:72"
-      ]
-    },
-    {
-      "from": "q:price-domain",
-      "to": "price.fn.domain",
-      "kind": "trigger",
-      "label": "PriceDomainQueueHandler",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/PriceDomainQueueHandler.cs:39"
-      ]
-    },
-    {
-      "from": "q:price-domain-ingress",
-      "to": "price.fn.domain-ingress",
-      "kind": "trigger",
-      "label": "PriceDomainIngressQueueHandler",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/PriceDomainIngressQueueHandler.cs:65"
-      ]
-    },
-    {
-      "from": "q:price-subscriptions",
-      "to": "price.fn.subscriptions",
-      "kind": "trigger",
-      "label": "PriceSubscriptionsHandler",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/PriceSubscriptionsHandler.cs:22"
-      ]
-    },
-    {
-      "from": "s:customerproject-topic/price-to-customerproject-subscription",
-      "to": "price.fn.sub-customerproject",
-      "kind": "trigger",
-      "label": "CustomerProjectSubscriptionTrigger",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/CustomerProjectSubscriptionTrigger.cs:27"
-      ]
-    },
-    {
-      "from": "s:customer-topic/price-to-customer-subscription",
-      "to": "price.fn.sub-customer",
-      "kind": "trigger",
-      "label": "CustomerSubscriptionTrigger",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/CustomerSubscriptionTrigger.cs:26"
-      ]
-    },
-    {
-      "from": "s:warehouse-topic/price-to-warehouse-subscription",
-      "to": "price.fn.sub-warehouse",
-      "kind": "trigger",
-      "label": "WarehouseSubscriptionTrigger",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/WarehouseSubscriptionTrigger.cs:18"
-      ]
-    },
-    {
-      "from": "s:currency-topic/price-to-currency-subscription",
-      "to": "price.fn.sub-currency",
-      "kind": "trigger",
-      "label": "CurrencySubscriptionTrigger",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/CurrencySubscriptionTrigger.cs:17"
-      ]
-    },
-    {
-      "from": "s:product-topic/price-to-product-subscription",
-      "to": "price.fn.sub-product",
-      "kind": "trigger",
-      "label": "ProductSubscriptionTrigger",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/ProductSubscriptionTrigger.cs:18"
-      ]
-    },
-    {
-      "from": "b:pricedumpfromoptimera",
-      "to": "price.fn.blob-optimera",
-      "kind": "trigger",
-      "label": "OptimeraSnapshotFileBlobTrigger",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs:17"
-      ]
-    },
-    {
-      "from": "q:price-ingress",
-      "to": "price.fn.ingress",
-      "kind": "trigger",
-      "label": "PriceIngressQueueHandler",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs:47"
-      ]
-    },
-    {
-      "from": "q:price-snapshot",
-      "to": "price.fn.snapshot",
-      "kind": "trigger",
-      "label": "PriceSnapshotQueueHandler",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs:32"
-      ]
-    },
-    {
-      "from": "price.api.http",
-      "to": "q:price",
-      "kind": "publish",
-      "label": "DeleteNexstepPriceList",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Api/V3/Controllers/AdminController.cs:38"
-      ]
-    },
-    {
-      "from": "price.fn.commands",
-      "to": "t:price",
-      "kind": "publish",
-      "label": "ItemCampaignsChanged",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs:52",
-        "src/Dahl.Price.Application/Features/Admin/PublishAllItemCampaignsHandler.cs:48"
-      ]
-    },
-    {
-      "from": "price.fn.timer-snapshot",
-      "to": "q:price",
-      "kind": "publish",
-      "label": "SaveLowestPriceSnapshot",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/PriceSnapshotTimerTrigger.cs:20"
-      ]
-    },
-    {
-      "from": "price.fn.timer-check-campaigns",
-      "to": "q:price",
-      "kind": "publish",
-      "label": "CheckItemCampaigns",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/CheckItemCampaignsTimerTrigger.cs:26"
-      ]
-    },
-    {
-      "from": "price.fn.timer-campaign-lowest",
-      "to": "q:price",
-      "kind": "publish",
-      "label": "SaveCampaignLowestPrices",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Functions/Functions/PriceCampaignLowestPricesTimerTrigger.cs:25"
-      ]
-    },
-    {
-      "from": "price.fn.ingress",
-      "to": "q:price-snapshot",
-      "kind": "publish",
-      "label": "Create*Snapshot",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs:55"
-      ]
-    },
-    {
-      "from": "price.fn.timer-reload-m3cloud",
-      "to": "q:price-snapshot",
-      "kind": "publish",
-      "label": "Reload* (6)",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:24",
-        "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:39",
-        "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:54",
-        "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:69",
-        "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:84",
-        "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:99"
-      ]
-    },
-    {
-      "from": "price.fn.snapshot",
-      "to": "q:price-domain",
-      "kind": "publish",
-      "label": "Optimera* snapshots",
-      "scope": "both",
-      "confidence": "code",
-      "sources": [
-        "src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraDirectDeliverySupplierSnapshotOnSupplierChangedHandler.cs:16",
-        "src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemMasterChangedHandler.cs:18",
-        "src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemWarehouseChangedHandler.cs:23",
-        "src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemAssortmentChangedHandler.cs:16"
-      ]
-    },
-    {
-      "from": "t:customerproject-topic",
-      "to": "s:customerproject-topic/price-to-customerproject-subscription",
-      "kind": "subscription",
-      "scope": "both",
-      "confidence": "terraform"
-    },
-    {
-      "from": "t:customer-topic",
-      "to": "s:customer-topic/price-to-customer-subscription",
-      "kind": "subscription",
-      "scope": "both",
-      "confidence": "terraform"
-    },
-    {
-      "from": "t:warehouse-topic",
-      "to": "s:warehouse-topic/price-to-warehouse-subscription",
-      "kind": "subscription",
-      "scope": "both",
-      "confidence": "terraform"
-    },
-    {
-      "from": "t:currency-topic",
-      "to": "s:currency-topic/price-to-currency-subscription",
-      "kind": "subscription",
-      "scope": "both",
-      "confidence": "terraform"
-    },
-    {
-      "from": "t:product-topic",
-      "to": "s:product-topic/price-to-product-subscription",
-      "kind": "subscription",
-      "scope": "both",
-      "confidence": "terraform"
-    },
-    {
-      "from": "t:assortment",
-      "to": "s:assortment/price-to-assortment-subscription",
-      "kind": "subscription",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep"
-      ]
-    },
-    {
-      "from": "s:assortment/price-to-assortment-subscription",
-      "to": "q:price-ingress",
-      "kind": "forward",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep:203-263"
-      ]
-    },
-    {
-      "from": "t:customeragreementhead",
-      "to": "s:customeragreementhead/price-to-customeragreementhead-subscription",
-      "kind": "subscription",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep"
-      ]
-    },
-    {
-      "from": "s:customeragreementhead/price-to-customeragreementhead-subscription",
-      "to": "q:price-ingress",
-      "kind": "forward",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep:203-263"
-      ]
-    },
-    {
-      "from": "t:headerfile",
-      "to": "s:headerfile/price-to-headerfile-subscription",
-      "kind": "subscription",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep"
-      ]
-    },
-    {
-      "from": "s:headerfile/price-to-headerfile-subscription",
-      "to": "q:price-ingress",
-      "kind": "forward",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep:203-263"
-      ]
-    },
-    {
-      "from": "t:linefile",
-      "to": "s:linefile/price-to-linefile-subscription",
-      "kind": "subscription",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep"
-      ]
-    },
-    {
-      "from": "s:linefile/price-to-linefile-subscription",
-      "to": "q:price-ingress",
-      "kind": "forward",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep:203-263"
-      ]
-    },
-    {
-      "from": "t:quotationorderhead",
-      "to": "s:quotationorderhead/price-to-quotationorderhead-subscription",
-      "kind": "subscription",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep"
-      ]
-    },
-    {
-      "from": "s:quotationorderhead/price-to-quotationorderhead-subscription",
-      "to": "q:price-ingress",
-      "kind": "forward",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep:203-263"
-      ]
-    },
-    {
-      "from": "t:salepricelist",
-      "to": "s:salepricelist/price-to-salepricelist-subscription",
-      "kind": "subscription",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep"
-      ]
-    },
-    {
-      "from": "s:salepricelist/price-to-salepricelist-subscription",
-      "to": "q:price-ingress",
-      "kind": "forward",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep:203-263"
-      ]
-    },
-    {
-      "from": "t:supplier",
-      "to": "s:supplier/price-to-supplier-subscription",
-      "kind": "subscription",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep"
-      ]
-    },
-    {
-      "from": "s:supplier/price-to-supplier-subscription",
-      "to": "q:price-ingress",
-      "kind": "forward",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep:203-263"
-      ]
-    },
-    {
-      "from": "t:systemtablefile",
-      "to": "s:systemtablefile/price-to-systemtablefile-subscription",
-      "kind": "subscription",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep"
-      ]
-    },
-    {
-      "from": "s:systemtablefile/price-to-systemtablefile-subscription",
-      "to": "q:price-ingress",
-      "kind": "forward",
-      "scope": "local",
-      "confidence": "terraform",
-      "sources": [
-        "infrastructure/local-shared.bicep:203-263"
-      ]
-    },
-    {
-      "from": "ext:m3-pico",
-      "to": "q:price-domain-ingress",
-      "kind": "inject",
-      "label": "M3 PICO events (~23 contracts), bypass ingress/snapshot",
-      "scope": "cloud",
-      "confidence": "manual"
-    },
-    {
-      "from": "ext:external-subscriptions",
-      "to": "q:price-subscriptions",
-      "kind": "inject",
-      "label": "sender not in repo",
-      "scope": "cloud",
-      "confidence": "manual"
-    }
-  ],
-  "hosts": {
-    "emulator": {
-      "namespace": "sbemulatorns",
-      "queueTemplate": "{short}",
-      "topicTemplate": "{short}",
-      "mutating": true,
-      "provisioned": false,
-      "note": "price not in shared-stack Config.json"
-    },
-    "developer-local-azure": {
-      "namespace": "sb-bjoo-local-noe-dahl-shared.servicebus.windows.net",
-      "resourceGroup": "rg-bjoo-local-noe-dahl-shared",
-      "queueTemplate": "sbq-bjoo-local-noe-dahl-shared-{short}",
-      "topicTemplate": "sbt-bjoo-local-noe-dahl-shared-{short}",
-      "subscriptionTemplate": "{from}-to-{to}-subscription",
-      "mutating": true,
-      "provisioned": false,
-      "note": "az list 2026-11-04: no price entities; local-shared.bicep not applied for price"
-    },
-    "cloud-dev": {
-      "namespace": "870 dev shared namespace (name unconfirmed)",
-      "queueTemplate": "sbq-870-dev-euw-dahl-shared-{short}",
-      "topicTemplate": "sbt-870-dev-euw-dahl-shared-{short}",
-      "subscriptionTemplate": "{from}-to-{to}-subscription",
-      "mutating": false,
-      "provisioned": null,
-      "note": "peek-only; purge forbidden"
-    }
+ "id": "price.dev",
+ "project": "price",
+ "env": "dev",
+ "schemaVersion": 2,
+ "generatedAt": "2026-11-04T12:33:44Z",
+ "sources": [
+  {
+   "kind": "trigger-scan",
+   "path": "/workspace/dsp/dsp-price/src",
+   "commit": "51f4830 (per brief; box copy is not a git repo)"
   },
-  "observability": {
-    "appInsights": {
-      "resource": "appin-870-dev-euw-dahl-shared",
-      "resourceGroup": "rg-870-dev-euw-dahl-shared",
-      "subscription": "870Z-DAHL-DigitalServicePlatform-West-Europe-DEV",
-      "cloudRoleNames": [
-        "web-870-dev-euw-dahl-price",
-        "web-870-dev-euw-dahl-pricebatch",
-        "func-870-dev-euw-dahl-price",
-        "func-870-dev-euw-dahl-price-ingress"
-      ]
-    },
-    "traceIt": {
-      "status": "unknown"
-    }
+  {
+   "kind": "local-config",
+   "path": "/workspace/dsp/dsp-price/infrastructure/local-shared.bicep"
   },
-  "samples": {
-    "catalog": "none",
-    "source": "none: no price seed kit / test-kit found"
+  {
+   "kind": "local-config",
+   "path": "/workspace/dsp/dsp-price/infrastructure/local-price.bicep"
   },
-  "overrides": {
-    "handlerLabels": {
-      "price.api.http": "HTTP controllers",
-      "price.api-batch.http": "HTTP (batch)",
-      "price.fn.commands": "COMMANDS",
-      "price.fn.domain": "DOMAIN",
-      "price.fn.domain-ingress": "DOMAIN (PICO direct)",
-      "price.fn.subscriptions": "SUBSCRIPTIONS",
-      "price.fn.sub-customerproject": "CUSTOMERPROJECT sub",
-      "price.fn.sub-customer": "CUSTOMER sub",
-      "price.fn.sub-warehouse": "WAREHOUSE sub",
-      "price.fn.sub-currency": "CURRENCY sub",
-      "price.fn.sub-product": "PRODUCT sub",
-      "price.fn.blob-optimera": "OPTIMERA FILE",
-      "price.fn.timer-snapshot": "LOWEST PRICE SNAPSHOT",
-      "price.fn.timer-check-campaigns": "CHECK CAMPAIGNS",
-      "price.fn.timer-campaign-lowest": "CAMPAIGN LOWEST PRICES",
-      "price.fn.ingress": "INGRESS",
-      "price.fn.snapshot": "SNAPSHOT",
-      "price.fn.timer-reload-m3cloud": "RELOAD M3CLOUD (6 timers)"
-    },
-    "logicalContainers": [],
-    "allowBidirectional": [],
-    "note": "Reload timers grouped into one handler (same class, same outbound) - ADDENDA-009 \u00a73."
+  {
+   "kind": "local-config",
+   "path": "/workspace/dsp/dsp-price/src/Dahl.Price.Functions/local.settings.json"
   },
-  "layoutDefaults": {
-    "note": "Default Flow layout (ADDENDA-009, LR): ION topics → subscriptions → price-ingress → ingress-app; snapshot/domain queues; PICO, subscriptions, blob and upstream topic subscriptions aligned with their handlers in func-app; q:price above COMMANDS; Api containers top right. Containers absolute, handler nodes relative to their container. Runtime positions override per key. Refresh with scripts/export-flow-layout.sh --id price.dev.",
-    "positions": {
-      "b:pricedumpfromoptimera": { "x": 960, "y": 640 },
-      "container:price.api": { "x": 1680, "y": 0 },
-      "container:price.api-batch": { "x": 1920, "y": 0 },
-      "container:price.func-app": { "x": 1200, "y": 96 },
-      "container:price.ingress-app": { "x": 720, "y": 96 },
-      "ext:external-subscriptions": { "x": 720, "y": 544 },
-      "ext:m3-pico": { "x": 720, "y": 448 },
-      "price.api-batch.http": { "x": 16, "y": 40 },
-      "price.api.http": { "x": 16, "y": 40 },
-      "price.fn.blob-optimera": { "x": 16, "y": 544 },
-      "price.fn.commands": { "x": 216, "y": 104 },
-      "price.fn.domain": { "x": 16, "y": 232 },
-      "price.fn.domain-ingress": { "x": 16, "y": 352 },
-      "price.fn.ingress": { "x": 16, "y": 40 },
-      "price.fn.snapshot": { "x": 16, "y": 232 },
-      "price.fn.sub-currency": { "x": 16, "y": 832 },
-      "price.fn.sub-customer": { "x": 16, "y": 704 },
-      "price.fn.sub-customerproject": { "x": 16, "y": 640 },
-      "price.fn.sub-product": { "x": 16, "y": 896 },
-      "price.fn.sub-warehouse": { "x": 16, "y": 768 },
-      "price.fn.subscriptions": { "x": 16, "y": 448 },
-      "price.fn.timer-campaign-lowest": { "x": 16, "y": 168 },
-      "price.fn.timer-check-campaigns": { "x": 16, "y": 104 },
-      "price.fn.timer-reload-m3cloud": { "x": 16, "y": 136 },
-      "price.fn.timer-snapshot": { "x": 16, "y": 40 },
-      "q:price": { "x": 1416, "y": 16 },
-      "q:price-domain": { "x": 960, "y": 328 },
-      "q:price-domain-ingress": { "x": 960, "y": 448 },
-      "q:price-ingress": { "x": 480, "y": 136 },
-      "q:price-snapshot": { "x": 960, "y": 184 },
-      "q:price-subscriptions": { "x": 960, "y": 544 },
-      "s:assortment/price-to-assortment-subscription": { "x": 240, "y": 0 },
-      "s:currency-topic/price-to-currency-subscription": { "x": 960, "y": 928 },
-      "s:customer-topic/price-to-customer-subscription": { "x": 960, "y": 800 },
-      "s:customeragreementhead/price-to-customeragreementhead-subscription": { "x": 240, "y": 64 },
-      "s:customerproject-topic/price-to-customerproject-subscription": { "x": 960, "y": 736 },
-      "s:headerfile/price-to-headerfile-subscription": { "x": 240, "y": 128 },
-      "s:linefile/price-to-linefile-subscription": { "x": 240, "y": 192 },
-      "s:product-topic/price-to-product-subscription": { "x": 960, "y": 992 },
-      "s:quotationorderhead/price-to-quotationorderhead-subscription": { "x": 240, "y": 256 },
-      "s:salepricelist/price-to-salepricelist-subscription": { "x": 240, "y": 320 },
-      "s:supplier/price-to-supplier-subscription": { "x": 240, "y": 384 },
-      "s:systemtablefile/price-to-systemtablefile-subscription": { "x": 240, "y": 448 },
-      "s:warehouse-topic/price-to-warehouse-subscription": { "x": 960, "y": 864 },
-      "t:assortment": { "x": 0, "y": 0 },
-      "t:currency-topic": { "x": 720, "y": 928 },
-      "t:customer-topic": { "x": 720, "y": 800 },
-      "t:customeragreementhead": { "x": 0, "y": 64 },
-      "t:customerproject-topic": { "x": 720, "y": 736 },
-      "t:headerfile": { "x": 0, "y": 128 },
-      "t:linefile": { "x": 0, "y": 192 },
-      "t:price": { "x": 1680, "y": 200 },
-      "t:product-topic": { "x": 720, "y": 992 },
-      "t:quotationorderhead": { "x": 0, "y": 256 },
-      "t:salepricelist": { "x": 0, "y": 320 },
-      "t:supplier": { "x": 0, "y": 384 },
-      "t:systemtablefile": { "x": 0, "y": 448 },
-      "t:warehouse-topic": { "x": 720, "y": 864 }
-    }
+  {
+   "kind": "local-config",
+   "path": "/workspace/dsp/dsp-price/src/Dahl.Price.Ingress.Functions/local.settings.json"
+  },
+  {
+   "kind": "terraform",
+   "path": "/workspace/dsp/dsp-price/azure-pipelines.yml"
   }
+ ],
+ "apps": [
+  {
+   "id": "app:api",
+   "name": "Api",
+   "kind": "web",
+   "azureResource": "web-870-dev-euw-dahl-price",
+   "cloudRoleName": "web-870-dev-euw-dahl-price",
+   "local": {
+    "port": 52161,
+    "url": "https://localhost:52161/swagger"
+   },
+   "namingNote": "Site names from azure-pipelines.yml:165-169; cloudRoleName = site name (default) - confirm in AI. No run script (no /workspace/dsp/local-dev/price).",
+   "detection": {
+    "repoRoot": "C:/Users/bjooa/source/repos/DSP/dsp-price",
+    "processNames": [
+     "Dahl.Price.Api",
+     "dotnet"
+    ],
+    "commandLineContains": [
+     "Dahl.Price.Api"
+    ],
+    "executablePathGlobs": [
+     "{repoRoot}/src/Dahl.Price.Api/bin/**/*"
+    ],
+    "ports": [
+     52160,
+     52161
+    ],
+    "logGlobs": []
+   }
+  },
+  {
+   "id": "app:api-batch",
+   "name": "Api.Batch",
+   "kind": "web",
+   "azureResource": "web-870-dev-euw-dahl-pricebatch",
+   "cloudRoleName": "web-870-dev-euw-dahl-pricebatch",
+   "local": {
+    "port": 52171
+   },
+   "namingNote": "Site names from azure-pipelines.yml:165-169; cloudRoleName = site name (default) - confirm in AI. No run script (no /workspace/dsp/local-dev/price).",
+   "detection": {
+    "repoRoot": "C:/Users/bjooa/source/repos/DSP/dsp-price",
+    "processNames": [
+     "Dahl.Price.Api.Batch",
+     "dotnet"
+    ],
+    "commandLineContains": [
+     "Dahl.Price.Api.Batch"
+    ],
+    "executablePathGlobs": [
+     "{repoRoot}/src/Dahl.Price.Api.Batch/bin/**/*"
+    ],
+    "ports": [
+     52170,
+     52171
+    ],
+    "logGlobs": []
+   }
+  },
+  {
+   "id": "app:functions",
+   "name": "Functions",
+   "kind": "func",
+   "azureResource": "func-870-dev-euw-dahl-price",
+   "cloudRoleName": "func-870-dev-euw-dahl-price",
+   "local": {
+    "port": 7073
+   },
+   "namingNote": "Site names from azure-pipelines.yml:165-169; cloudRoleName = site name (default) - confirm in AI. No run script (no /workspace/dsp/local-dev/price).",
+   "detection": {
+    "repoRoot": "C:/Users/bjooa/source/repos/DSP/dsp-price",
+    "processNames": [
+     "func",
+     "dotnet"
+    ],
+    "commandLineContains": [
+     "Dahl.Price.Functions"
+    ],
+    "executablePathGlobs": [
+     "{repoRoot}/src/Dahl.Price.Functions/bin/**/*"
+    ],
+    "ports": [
+     7073
+    ],
+    "logGlobs": []
+   }
+  },
+  {
+   "id": "app:ingress",
+   "name": "Ingress",
+   "kind": "func-ingress",
+   "azureResource": "func-870-dev-euw-dahl-price-ingress",
+   "cloudRoleName": "func-870-dev-euw-dahl-price-ingress",
+   "local": {},
+   "namingNote": "Site names from azure-pipelines.yml:165-169; cloudRoleName = site name (default) - confirm in AI. No run script (no /workspace/dsp/local-dev/price).",
+   "detection": {
+    "repoRoot": "C:/Users/bjooa/source/repos/DSP/dsp-price",
+    "processNames": [
+     "func",
+     "dotnet"
+    ],
+    "commandLineContains": [
+     "Dahl.Price.Ingress.Functions"
+    ],
+    "executablePathGlobs": [
+     "{repoRoot}/src/Dahl.Price.Ingress.Functions/bin/**/*"
+    ],
+    "ports": [],
+    "logGlobs": []
+   }
+  }
+ ],
+ "containers": [
+  {
+   "id": "container:price.api",
+   "label": "Api :52161",
+   "kind": "resource",
+   "resourceRefs": [
+    "app:api"
+   ],
+   "appIds": [
+    "app:api"
+   ]
+  },
+  {
+   "id": "container:price.api-batch",
+   "label": "Api.Batch :52171",
+   "kind": "resource",
+   "resourceRefs": [
+    "app:api-batch"
+   ],
+   "appIds": [
+    "app:api-batch"
+   ]
+  },
+  {
+   "id": "container:price.func-app",
+   "label": "Functions :7073",
+   "kind": "resource",
+   "resourceRefs": [
+    "app:functions"
+   ],
+   "appIds": [
+    "app:functions"
+   ]
+  },
+  {
+   "id": "container:price.ingress-app",
+   "label": "Ingress (port ?)",
+   "kind": "resource",
+   "resourceRefs": [
+    "app:ingress"
+   ],
+   "appIds": [
+    "app:ingress"
+   ]
+  }
+ ],
+ "handlers": [
+  {
+   "id": "price.api.http",
+   "label": "HTTP controllers",
+   "appId": "app:api",
+   "containerId": "container:price.api",
+   "triggers": [
+    {
+     "kind": "http",
+     "sourceFile": "src/Dahl.Price.Api"
+    }
+   ]
+  },
+  {
+   "id": "price.api-batch.http",
+   "label": "HTTP (batch)",
+   "appId": "app:api-batch",
+   "containerId": "container:price.api-batch",
+   "triggers": [
+    {
+     "kind": "http",
+     "sourceFile": "src/Dahl.Price.Api.Batch"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.commands",
+   "label": "COMMANDS",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "PriceQueueHandler",
+     "entityId": "q:price",
+     "setting": "ServiceBusPriceQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs:72"
+    }
+   ],
+   "selfRequeue": [
+    {
+     "entityId": "q:price",
+     "messages": [
+      "VisionPointUpdatePriceListTableCampaign"
+     ],
+     "sources": [
+      "src/Dahl.Price.Application/Features/Import/VisionPoint/ImportVisionPointCampaignItemHandler.cs:45"
+     ],
+     "generated": true
+    }
+   ]
+  },
+  {
+   "id": "price.fn.domain",
+   "label": "DOMAIN",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "PriceDomainQueueHandler",
+     "entityId": "q:price-domain",
+     "setting": "ServiceBusPriceDomainQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/PriceDomainQueueHandler.cs:39"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.domain-ingress",
+   "label": "DOMAIN (PICO direct)",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "PriceDomainIngressQueueHandler",
+     "entityId": "q:price-domain-ingress",
+     "setting": "ServiceBusPriceDomainIngressQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/PriceDomainIngressQueueHandler.cs:65"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.subscriptions",
+   "label": "SUBSCRIPTIONS",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "PriceSubscriptionsHandler",
+     "entityId": "q:price-subscriptions",
+     "setting": "ServiceBusPriceSubscriptionsQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/PriceSubscriptionsHandler.cs:22"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.sub-customerproject",
+   "label": "CUSTOMERPROJECT sub",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "CustomerProjectSubscriptionTrigger",
+     "entityId": "s:customerproject-topic/price-to-customerproject-subscription",
+     "setting": "ServiceBusCustomerProjectSubscription",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/CustomerProjectSubscriptionTrigger.cs:27"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.sub-customer",
+   "label": "CUSTOMER sub",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "CustomerSubscriptionTrigger",
+     "entityId": "s:customer-topic/price-to-customer-subscription",
+     "setting": "ServiceBusCustomerSubscription",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/CustomerSubscriptionTrigger.cs:26"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.sub-warehouse",
+   "label": "WAREHOUSE sub",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "WarehouseSubscriptionTrigger",
+     "entityId": "s:warehouse-topic/price-to-warehouse-subscription",
+     "setting": "ServiceBusWarehouseSubscription",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/WarehouseSubscriptionTrigger.cs:18"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.sub-currency",
+   "label": "CURRENCY sub",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "CurrencySubscriptionTrigger",
+     "entityId": "s:currency-topic/price-to-currency-subscription",
+     "setting": "ServiceBusCurrencySubscription",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/CurrencySubscriptionTrigger.cs:17"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.sub-product",
+   "label": "PRODUCT sub",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "ProductSubscriptionTrigger",
+     "entityId": "s:product-topic/price-to-product-subscription",
+     "setting": "ServiceBusProductSubscription",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/ProductSubscriptionTrigger.cs:18"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.blob-optimera",
+   "label": "OPTIMERA FILE",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "blob",
+     "function": "OptimeraSnapshotFileBlobTrigger",
+     "path": "pricedumpfromoptimera/{filename}",
+     "connection": "PriceStorageAccount",
+     "entityId": "b:pricedumpfromoptimera",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs:17"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.timer-snapshot",
+   "label": "LOWEST PRICE SNAPSHOT",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "timer",
+     "function": "PriceSnapshotTimerTrigger",
+     "schedule": "0 0 4,12,17 * * *",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/PriceSnapshotTimerTrigger.cs:16"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.timer-check-campaigns",
+   "label": "CHECK CAMPAIGNS",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "timer",
+     "function": "CheckItemCampaignsTimerTrigger",
+     "schedule": "0 0 * * * *",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/CheckItemCampaignsTimerTrigger.cs:21"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.timer-campaign-lowest",
+   "label": "CAMPAIGN LOWEST PRICES",
+   "appId": "app:functions",
+   "containerId": "container:price.func-app",
+   "triggers": [
+    {
+     "kind": "timer",
+     "function": "PriceCampaignLowestPricesTimerTrigger",
+     "schedule": "0 15 4,12,17 * * *",
+     "sourceFile": "src/Dahl.Price.Functions/Functions/PriceCampaignLowestPricesTimerTrigger.cs:21"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.ingress",
+   "label": "INGRESS",
+   "appId": "app:ingress",
+   "containerId": "container:price.ingress-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "PriceIngressQueueHandler",
+     "entityId": "q:price-ingress",
+     "setting": "ServiceBusPriceIngressQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs:47"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.snapshot",
+   "label": "SNAPSHOT",
+   "appId": "app:ingress",
+   "containerId": "container:price.ingress-app",
+   "triggers": [
+    {
+     "kind": "servicebus",
+     "function": "PriceSnapshotQueueHandler",
+     "entityId": "q:price-snapshot",
+     "setting": "ServiceBusPriceSnapshotQueue",
+     "connection": "ServiceBusNamespace",
+     "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs:32"
+    }
+   ]
+  },
+  {
+   "id": "price.fn.timer-reload-m3cloud",
+   "label": "RELOAD M3CLOUD (6 timers)",
+   "appId": "app:ingress",
+   "containerId": "container:price.ingress-app",
+   "triggers": [
+    {
+     "kind": "timer",
+     "function": "RunOptimeraCampaignTimerTrigger",
+     "setting": "ReloadM3CloudOptimeraCampaignTimerTrigger",
+     "schedule": "0 5 2 * * *",
+     "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:15"
+    },
+    {
+     "kind": "timer",
+     "function": "RunOptimeraCampaignPriceTimerTrigger",
+     "setting": "ReloadM3CloudOptimeraCampaignPriceTimerTrigger",
+     "schedule": "0 7 2 * * *",
+     "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:30"
+    },
+    {
+     "kind": "timer",
+     "function": "RunOptimeraOfferPriceTimerTrigger",
+     "setting": "ReloadM3CloudOptimeraOfferPriceTimerTrigger",
+     "schedule": "0 10 2 * * *",
+     "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:45"
+    },
+    {
+     "kind": "timer",
+     "function": "RunOptimeraPriceListTimerTrigger",
+     "setting": "ReloadM3CloudOptimeraPriceListTimerTrigger",
+     "schedule": "0 12 2 * * *",
+     "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:60"
+    },
+    {
+     "kind": "timer",
+     "function": "RunOptimeraPriceListTableCampaignTimerTrigger",
+     "setting": "ReloadM3CloudOptimeraPriceListTableCampaignTimerTrigger",
+     "schedule": "0 15 2 * * *",
+     "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:75"
+    },
+    {
+     "kind": "timer",
+     "function": "RunOptimeraPriceListTablePriceListTimerTrigger",
+     "setting": "ReloadM3CloudOptimeraPriceListTablePriceListTimerTrigger",
+     "schedule": "0 18 2 * * *",
+     "sourceFile": "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:90"
+    }
+   ]
+  }
+ ],
+ "entities": [
+  {
+   "id": "q:price",
+   "kind": "queue",
+   "localName": "price",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-price",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:price-ingress",
+   "kind": "queue",
+   "localName": "price-ingress",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-price-ingress",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:price-snapshot",
+   "kind": "queue",
+   "localName": "price-snapshot",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-price-snapshot",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:price-domain",
+   "kind": "queue",
+   "localName": "price-domain",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-price-domain",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:price-domain-ingress",
+   "kind": "queue",
+   "localName": "price-domain-ingress",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-price-domain-ingress",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:price-subscriptions",
+   "kind": "queue",
+   "localName": "price-subscriptions",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-price-subscriptions",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "t:price",
+   "kind": "topic",
+   "localName": "price",
+   "cloudName": "sbt-870-dev-euw-dahl-shared-price",
+   "owner": "project",
+   "scope": "both"
+  },
+  {
+   "id": "t:customerproject-topic",
+   "kind": "topic",
+   "localName": "customerproject",
+   "cloudName": "sbt-870-dev-euw-dahl-shared-customerproject",
+   "owner": "shared",
+   "scope": "both"
+  },
+  {
+   "id": "s:customerproject-topic/price-to-customerproject-subscription",
+   "kind": "subscription",
+   "localName": "price-to-customerproject-subscription",
+   "topic": "t:customerproject-topic",
+   "cloudName": "price-to-customerproject-subscription",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:customer-topic",
+   "kind": "topic",
+   "localName": "customer",
+   "cloudName": "sbt-870-dev-euw-dahl-shared-customer",
+   "owner": "shared",
+   "scope": "both"
+  },
+  {
+   "id": "s:customer-topic/price-to-customer-subscription",
+   "kind": "subscription",
+   "localName": "price-to-customer-subscription",
+   "topic": "t:customer-topic",
+   "cloudName": "price-to-customer-subscription",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:warehouse-topic",
+   "kind": "topic",
+   "localName": "warehouse",
+   "cloudName": "sbt-870-dev-euw-dahl-shared-warehouse",
+   "owner": "shared",
+   "scope": "both"
+  },
+  {
+   "id": "s:warehouse-topic/price-to-warehouse-subscription",
+   "kind": "subscription",
+   "localName": "price-to-warehouse-subscription",
+   "topic": "t:warehouse-topic",
+   "cloudName": "price-to-warehouse-subscription",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:currency-topic",
+   "kind": "topic",
+   "localName": "currency",
+   "cloudName": "sbt-870-dev-euw-dahl-shared-currency",
+   "owner": "shared",
+   "scope": "both"
+  },
+  {
+   "id": "s:currency-topic/price-to-currency-subscription",
+   "kind": "subscription",
+   "localName": "price-to-currency-subscription",
+   "topic": "t:currency-topic",
+   "cloudName": "price-to-currency-subscription",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:product-topic",
+   "kind": "topic",
+   "localName": "product",
+   "cloudName": "sbt-870-dev-euw-dahl-shared-product",
+   "owner": "shared",
+   "scope": "both"
+  },
+  {
+   "id": "s:product-topic/price-to-product-subscription",
+   "kind": "subscription",
+   "localName": "price-to-product-subscription",
+   "topic": "t:product-topic",
+   "cloudName": "price-to-product-subscription",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:assortment",
+   "kind": "topic",
+   "localName": "assortment",
+   "cloudName": null,
+   "owner": "shared",
+   "scope": "local"
+  },
+  {
+   "id": "s:assortment/price-to-assortment-subscription",
+   "kind": "subscription",
+   "localName": "price-to-assortment-subscription",
+   "topic": "t:assortment",
+   "forwardTo": "q:price-ingress",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:customeragreementhead",
+   "kind": "topic",
+   "localName": "customeragreementhead",
+   "cloudName": null,
+   "owner": "shared",
+   "scope": "local"
+  },
+  {
+   "id": "s:customeragreementhead/price-to-customeragreementhead-subscription",
+   "kind": "subscription",
+   "localName": "price-to-customeragreementhead-subscription",
+   "topic": "t:customeragreementhead",
+   "forwardTo": "q:price-ingress",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:headerfile",
+   "kind": "topic",
+   "localName": "headerfile",
+   "cloudName": null,
+   "owner": "shared",
+   "scope": "local"
+  },
+  {
+   "id": "s:headerfile/price-to-headerfile-subscription",
+   "kind": "subscription",
+   "localName": "price-to-headerfile-subscription",
+   "topic": "t:headerfile",
+   "forwardTo": "q:price-ingress",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:linefile",
+   "kind": "topic",
+   "localName": "linefile",
+   "cloudName": null,
+   "owner": "shared",
+   "scope": "local"
+  },
+  {
+   "id": "s:linefile/price-to-linefile-subscription",
+   "kind": "subscription",
+   "localName": "price-to-linefile-subscription",
+   "topic": "t:linefile",
+   "forwardTo": "q:price-ingress",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:quotationorderhead",
+   "kind": "topic",
+   "localName": "quotationorderhead",
+   "cloudName": null,
+   "owner": "shared",
+   "scope": "local"
+  },
+  {
+   "id": "s:quotationorderhead/price-to-quotationorderhead-subscription",
+   "kind": "subscription",
+   "localName": "price-to-quotationorderhead-subscription",
+   "topic": "t:quotationorderhead",
+   "forwardTo": "q:price-ingress",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:salepricelist",
+   "kind": "topic",
+   "localName": "salepricelist",
+   "cloudName": null,
+   "owner": "shared",
+   "scope": "local"
+  },
+  {
+   "id": "s:salepricelist/price-to-salepricelist-subscription",
+   "kind": "subscription",
+   "localName": "price-to-salepricelist-subscription",
+   "topic": "t:salepricelist",
+   "forwardTo": "q:price-ingress",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:supplier",
+   "kind": "topic",
+   "localName": "supplier",
+   "cloudName": null,
+   "owner": "shared",
+   "scope": "local"
+  },
+  {
+   "id": "s:supplier/price-to-supplier-subscription",
+   "kind": "subscription",
+   "localName": "price-to-supplier-subscription",
+   "topic": "t:supplier",
+   "forwardTo": "q:price-ingress",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:systemtablefile",
+   "kind": "topic",
+   "localName": "systemtablefile",
+   "cloudName": null,
+   "owner": "shared",
+   "scope": "local"
+  },
+  {
+   "id": "s:systemtablefile/price-to-systemtablefile-subscription",
+   "kind": "subscription",
+   "localName": "price-to-systemtablefile-subscription",
+   "topic": "t:systemtablefile",
+   "forwardTo": "q:price-ingress",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "b:pricedumpfromoptimera",
+   "kind": "blobContainer",
+   "localName": "pricedumpfromoptimera",
+   "storageAccountTemplate": "stlocaldahl{developer}price (developer-local-azure, infrastructure/local-price.bicep:10); cloud name unknown",
+   "owner": "project",
+   "scope": "both"
+  }
+ ],
+ "edges": [
+  {
+   "from": "q:price",
+   "to": "price.fn.commands",
+   "kind": "trigger",
+   "label": "PriceQueueHandler",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs:72"
+   ]
+  },
+  {
+   "from": "q:price-domain",
+   "to": "price.fn.domain",
+   "kind": "trigger",
+   "label": "PriceDomainQueueHandler",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/PriceDomainQueueHandler.cs:39"
+   ]
+  },
+  {
+   "from": "q:price-domain-ingress",
+   "to": "price.fn.domain-ingress",
+   "kind": "trigger",
+   "label": "PriceDomainIngressQueueHandler",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/PriceDomainIngressQueueHandler.cs:65"
+   ]
+  },
+  {
+   "from": "q:price-subscriptions",
+   "to": "price.fn.subscriptions",
+   "kind": "trigger",
+   "label": "PriceSubscriptionsHandler",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/PriceSubscriptionsHandler.cs:22"
+   ]
+  },
+  {
+   "from": "s:customerproject-topic/price-to-customerproject-subscription",
+   "to": "price.fn.sub-customerproject",
+   "kind": "trigger",
+   "label": "CustomerProjectSubscriptionTrigger",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/CustomerProjectSubscriptionTrigger.cs:27"
+   ]
+  },
+  {
+   "from": "s:customer-topic/price-to-customer-subscription",
+   "to": "price.fn.sub-customer",
+   "kind": "trigger",
+   "label": "CustomerSubscriptionTrigger",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/CustomerSubscriptionTrigger.cs:26"
+   ]
+  },
+  {
+   "from": "s:warehouse-topic/price-to-warehouse-subscription",
+   "to": "price.fn.sub-warehouse",
+   "kind": "trigger",
+   "label": "WarehouseSubscriptionTrigger",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/WarehouseSubscriptionTrigger.cs:18"
+   ]
+  },
+  {
+   "from": "s:currency-topic/price-to-currency-subscription",
+   "to": "price.fn.sub-currency",
+   "kind": "trigger",
+   "label": "CurrencySubscriptionTrigger",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/CurrencySubscriptionTrigger.cs:17"
+   ]
+  },
+  {
+   "from": "s:product-topic/price-to-product-subscription",
+   "to": "price.fn.sub-product",
+   "kind": "trigger",
+   "label": "ProductSubscriptionTrigger",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/ProductSubscriptionTrigger.cs:18"
+   ]
+  },
+  {
+   "from": "b:pricedumpfromoptimera",
+   "to": "price.fn.blob-optimera",
+   "kind": "trigger",
+   "label": "OptimeraSnapshotFileBlobTrigger",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs:17"
+   ]
+  },
+  {
+   "from": "q:price-ingress",
+   "to": "price.fn.ingress",
+   "kind": "trigger",
+   "label": "PriceIngressQueueHandler",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs:47"
+   ]
+  },
+  {
+   "from": "q:price-snapshot",
+   "to": "price.fn.snapshot",
+   "kind": "trigger",
+   "label": "PriceSnapshotQueueHandler",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs:32"
+   ]
+  },
+  {
+   "from": "price.api.http",
+   "to": "q:price",
+   "kind": "publish",
+   "label": "DeleteNexstepPriceList",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Api/V3/Controllers/AdminController.cs:38"
+   ]
+  },
+  {
+   "from": "price.fn.commands",
+   "to": "t:price",
+   "kind": "publish",
+   "label": "ItemCampaignsChanged",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs:52",
+    "src/Dahl.Price.Application/Features/Admin/PublishAllItemCampaignsHandler.cs:48"
+   ]
+  },
+  {
+   "from": "price.fn.timer-snapshot",
+   "to": "q:price",
+   "kind": "publish",
+   "label": "SaveLowestPriceSnapshot",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/PriceSnapshotTimerTrigger.cs:20"
+   ]
+  },
+  {
+   "from": "price.fn.timer-check-campaigns",
+   "to": "q:price",
+   "kind": "publish",
+   "label": "CheckItemCampaigns",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/CheckItemCampaignsTimerTrigger.cs:26"
+   ]
+  },
+  {
+   "from": "price.fn.timer-campaign-lowest",
+   "to": "q:price",
+   "kind": "publish",
+   "label": "SaveCampaignLowestPrices",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Functions/Functions/PriceCampaignLowestPricesTimerTrigger.cs:25"
+   ]
+  },
+  {
+   "from": "price.fn.ingress",
+   "to": "q:price-snapshot",
+   "kind": "publish",
+   "label": "Create*Snapshot",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs:55"
+   ]
+  },
+  {
+   "from": "price.fn.timer-reload-m3cloud",
+   "to": "q:price-snapshot",
+   "kind": "publish",
+   "label": "Reload* (6)",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:24",
+    "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:39",
+    "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:54",
+    "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:69",
+    "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:84",
+    "src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs:99"
+   ]
+  },
+  {
+   "from": "price.fn.snapshot",
+   "to": "q:price-domain",
+   "kind": "publish",
+   "label": "Optimera* snapshots",
+   "scope": "both",
+   "confidence": "code",
+   "sources": [
+    "src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraDirectDeliverySupplierSnapshotOnSupplierChangedHandler.cs:16",
+    "src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemMasterChangedHandler.cs:18",
+    "src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemWarehouseChangedHandler.cs:23",
+    "src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemAssortmentChangedHandler.cs:16"
+   ]
+  },
+  {
+   "from": "t:customerproject-topic",
+   "to": "s:customerproject-topic/price-to-customerproject-subscription",
+   "kind": "subscription",
+   "scope": "both",
+   "confidence": "terraform"
+  },
+  {
+   "from": "t:customer-topic",
+   "to": "s:customer-topic/price-to-customer-subscription",
+   "kind": "subscription",
+   "scope": "both",
+   "confidence": "terraform"
+  },
+  {
+   "from": "t:warehouse-topic",
+   "to": "s:warehouse-topic/price-to-warehouse-subscription",
+   "kind": "subscription",
+   "scope": "both",
+   "confidence": "terraform"
+  },
+  {
+   "from": "t:currency-topic",
+   "to": "s:currency-topic/price-to-currency-subscription",
+   "kind": "subscription",
+   "scope": "both",
+   "confidence": "terraform"
+  },
+  {
+   "from": "t:product-topic",
+   "to": "s:product-topic/price-to-product-subscription",
+   "kind": "subscription",
+   "scope": "both",
+   "confidence": "terraform"
+  },
+  {
+   "from": "t:assortment",
+   "to": "s:assortment/price-to-assortment-subscription",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep"
+   ]
+  },
+  {
+   "from": "s:assortment/price-to-assortment-subscription",
+   "to": "q:price-ingress",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep:203-263"
+   ]
+  },
+  {
+   "from": "t:customeragreementhead",
+   "to": "s:customeragreementhead/price-to-customeragreementhead-subscription",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep"
+   ]
+  },
+  {
+   "from": "s:customeragreementhead/price-to-customeragreementhead-subscription",
+   "to": "q:price-ingress",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep:203-263"
+   ]
+  },
+  {
+   "from": "t:headerfile",
+   "to": "s:headerfile/price-to-headerfile-subscription",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep"
+   ]
+  },
+  {
+   "from": "s:headerfile/price-to-headerfile-subscription",
+   "to": "q:price-ingress",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep:203-263"
+   ]
+  },
+  {
+   "from": "t:linefile",
+   "to": "s:linefile/price-to-linefile-subscription",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep"
+   ]
+  },
+  {
+   "from": "s:linefile/price-to-linefile-subscription",
+   "to": "q:price-ingress",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep:203-263"
+   ]
+  },
+  {
+   "from": "t:quotationorderhead",
+   "to": "s:quotationorderhead/price-to-quotationorderhead-subscription",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep"
+   ]
+  },
+  {
+   "from": "s:quotationorderhead/price-to-quotationorderhead-subscription",
+   "to": "q:price-ingress",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep:203-263"
+   ]
+  },
+  {
+   "from": "t:salepricelist",
+   "to": "s:salepricelist/price-to-salepricelist-subscription",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep"
+   ]
+  },
+  {
+   "from": "s:salepricelist/price-to-salepricelist-subscription",
+   "to": "q:price-ingress",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep:203-263"
+   ]
+  },
+  {
+   "from": "t:supplier",
+   "to": "s:supplier/price-to-supplier-subscription",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep"
+   ]
+  },
+  {
+   "from": "s:supplier/price-to-supplier-subscription",
+   "to": "q:price-ingress",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep:203-263"
+   ]
+  },
+  {
+   "from": "t:systemtablefile",
+   "to": "s:systemtablefile/price-to-systemtablefile-subscription",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep"
+   ]
+  },
+  {
+   "from": "s:systemtablefile/price-to-systemtablefile-subscription",
+   "to": "q:price-ingress",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "terraform",
+   "sources": [
+    "infrastructure/local-shared.bicep:203-263"
+   ]
+  },
+  {
+   "from": "ext:m3-pico",
+   "to": "q:price-domain-ingress",
+   "kind": "inject",
+   "label": "M3 PICO events (~23 contracts), bypass ingress/snapshot",
+   "scope": "cloud",
+   "confidence": "manual"
+  },
+  {
+   "from": "ext:external-subscriptions",
+   "to": "q:price-subscriptions",
+   "kind": "inject",
+   "label": "sender not in repo",
+   "scope": "cloud",
+   "confidence": "manual"
+  }
+ ],
+ "hosts": {
+  "emulator": {
+   "namespace": "sbemulatorns",
+   "queueTemplate": "{short}",
+   "topicTemplate": "{short}",
+   "mutating": true,
+   "provisioned": false,
+   "note": "price not in shared-stack Config.json"
+  },
+  "developer-local-azure": {
+   "namespace": "sb-bjoo-local-noe-dahl-shared.servicebus.windows.net",
+   "resourceGroup": "rg-bjoo-local-noe-dahl-shared",
+   "queueTemplate": "sbq-bjoo-local-noe-dahl-shared-{short}",
+   "topicTemplate": "sbt-bjoo-local-noe-dahl-shared-{short}",
+   "subscriptionTemplate": "{from}-to-{to}-subscription",
+   "mutating": true,
+   "provisioned": false,
+   "note": "az list 2026-11-04: no price entities; local-shared.bicep not applied for price"
+  },
+  "cloud-dev": {
+   "namespace": "870 dev shared namespace (name unconfirmed)",
+   "queueTemplate": "sbq-870-dev-euw-dahl-shared-{short}",
+   "topicTemplate": "sbt-870-dev-euw-dahl-shared-{short}",
+   "subscriptionTemplate": "{from}-to-{to}-subscription",
+   "mutating": false,
+   "provisioned": null,
+   "note": "peek-only; purge forbidden"
+  }
+ },
+ "observability": {
+  "appInsights": {
+   "resource": "appin-870-dev-euw-dahl-shared",
+   "resourceGroup": "rg-870-dev-euw-dahl-shared",
+   "subscription": "870Z-DAHL-DigitalServicePlatform-West-Europe-DEV",
+   "cloudRoleNames": [
+    "web-870-dev-euw-dahl-price",
+    "web-870-dev-euw-dahl-pricebatch",
+    "func-870-dev-euw-dahl-price",
+    "func-870-dev-euw-dahl-price-ingress"
+   ]
+  },
+  "traceIt": {
+   "status": "unknown"
+  }
+ },
+ "samples": {
+  "catalog": "none",
+  "source": "none: no price seed kit / test-kit found"
+ },
+ "overrides": {
+  "handlerLabels": {
+   "price.api.http": "HTTP controllers",
+   "price.api-batch.http": "HTTP (batch)",
+   "price.fn.commands": "COMMANDS",
+   "price.fn.domain": "DOMAIN",
+   "price.fn.domain-ingress": "DOMAIN (PICO direct)",
+   "price.fn.subscriptions": "SUBSCRIPTIONS",
+   "price.fn.sub-customerproject": "CUSTOMERPROJECT sub",
+   "price.fn.sub-customer": "CUSTOMER sub",
+   "price.fn.sub-warehouse": "WAREHOUSE sub",
+   "price.fn.sub-currency": "CURRENCY sub",
+   "price.fn.sub-product": "PRODUCT sub",
+   "price.fn.blob-optimera": "OPTIMERA FILE",
+   "price.fn.timer-snapshot": "LOWEST PRICE SNAPSHOT",
+   "price.fn.timer-check-campaigns": "CHECK CAMPAIGNS",
+   "price.fn.timer-campaign-lowest": "CAMPAIGN LOWEST PRICES",
+   "price.fn.ingress": "INGRESS",
+   "price.fn.snapshot": "SNAPSHOT",
+   "price.fn.timer-reload-m3cloud": "RELOAD M3CLOUD (6 timers)"
+  },
+  "logicalContainers": [],
+  "allowBidirectional": [],
+  "note": "Reload timers grouped into one handler (same class, same outbound) - ADDENDA-009 §3."
+ },
+ "layoutDefaults": {
+  "note": "Default Flow layout (ADDENDA-009, LR): ION topics → subscriptions → price-ingress → ingress-app; snapshot/domain queues; PICO, subscriptions, blob and upstream topic subscriptions aligned with their handlers in func-app; q:price above COMMANDS; Api containers top right. Containers absolute, handler nodes relative to their container. Runtime positions override per key. Refresh with scripts/export-flow-layout.sh --id price.dev.",
+  "positions": {
+   "b:pricedumpfromoptimera": {
+    "x": 960,
+    "y": 640
+   },
+   "container:price.api": {
+    "x": 1680,
+    "y": 0
+   },
+   "container:price.api-batch": {
+    "x": 1920,
+    "y": 0
+   },
+   "container:price.func-app": {
+    "x": 1200,
+    "y": 96
+   },
+   "container:price.ingress-app": {
+    "x": 720,
+    "y": 96
+   },
+   "ext:external-subscriptions": {
+    "x": 720,
+    "y": 544
+   },
+   "ext:m3-pico": {
+    "x": 720,
+    "y": 448
+   },
+   "price.api-batch.http": {
+    "x": 16,
+    "y": 40
+   },
+   "price.api.http": {
+    "x": 16,
+    "y": 40
+   },
+   "price.fn.blob-optimera": {
+    "x": 16,
+    "y": 544
+   },
+   "price.fn.commands": {
+    "x": 216,
+    "y": 104
+   },
+   "price.fn.domain": {
+    "x": 16,
+    "y": 232
+   },
+   "price.fn.domain-ingress": {
+    "x": 16,
+    "y": 352
+   },
+   "price.fn.ingress": {
+    "x": 16,
+    "y": 40
+   },
+   "price.fn.snapshot": {
+    "x": 16,
+    "y": 232
+   },
+   "price.fn.sub-currency": {
+    "x": 16,
+    "y": 832
+   },
+   "price.fn.sub-customer": {
+    "x": 16,
+    "y": 704
+   },
+   "price.fn.sub-customerproject": {
+    "x": 16,
+    "y": 640
+   },
+   "price.fn.sub-product": {
+    "x": 16,
+    "y": 896
+   },
+   "price.fn.sub-warehouse": {
+    "x": 16,
+    "y": 768
+   },
+   "price.fn.subscriptions": {
+    "x": 16,
+    "y": 448
+   },
+   "price.fn.timer-campaign-lowest": {
+    "x": 16,
+    "y": 168
+   },
+   "price.fn.timer-check-campaigns": {
+    "x": 16,
+    "y": 104
+   },
+   "price.fn.timer-reload-m3cloud": {
+    "x": 16,
+    "y": 136
+   },
+   "price.fn.timer-snapshot": {
+    "x": 16,
+    "y": 40
+   },
+   "q:price": {
+    "x": 1416,
+    "y": 16
+   },
+   "q:price-domain": {
+    "x": 960,
+    "y": 328
+   },
+   "q:price-domain-ingress": {
+    "x": 960,
+    "y": 448
+   },
+   "q:price-ingress": {
+    "x": 480,
+    "y": 136
+   },
+   "q:price-snapshot": {
+    "x": 960,
+    "y": 184
+   },
+   "q:price-subscriptions": {
+    "x": 960,
+    "y": 544
+   },
+   "s:assortment/price-to-assortment-subscription": {
+    "x": 240,
+    "y": 0
+   },
+   "s:currency-topic/price-to-currency-subscription": {
+    "x": 960,
+    "y": 928
+   },
+   "s:customer-topic/price-to-customer-subscription": {
+    "x": 960,
+    "y": 800
+   },
+   "s:customeragreementhead/price-to-customeragreementhead-subscription": {
+    "x": 240,
+    "y": 64
+   },
+   "s:customerproject-topic/price-to-customerproject-subscription": {
+    "x": 960,
+    "y": 736
+   },
+   "s:headerfile/price-to-headerfile-subscription": {
+    "x": 240,
+    "y": 128
+   },
+   "s:linefile/price-to-linefile-subscription": {
+    "x": 240,
+    "y": 192
+   },
+   "s:product-topic/price-to-product-subscription": {
+    "x": 960,
+    "y": 992
+   },
+   "s:quotationorderhead/price-to-quotationorderhead-subscription": {
+    "x": 240,
+    "y": 256
+   },
+   "s:salepricelist/price-to-salepricelist-subscription": {
+    "x": 240,
+    "y": 320
+   },
+   "s:supplier/price-to-supplier-subscription": {
+    "x": 240,
+    "y": 384
+   },
+   "s:systemtablefile/price-to-systemtablefile-subscription": {
+    "x": 240,
+    "y": 448
+   },
+   "s:warehouse-topic/price-to-warehouse-subscription": {
+    "x": 960,
+    "y": 864
+   },
+   "t:assortment": {
+    "x": 0,
+    "y": 0
+   },
+   "t:currency-topic": {
+    "x": 720,
+    "y": 928
+   },
+   "t:customer-topic": {
+    "x": 720,
+    "y": 800
+   },
+   "t:customeragreementhead": {
+    "x": 0,
+    "y": 64
+   },
+   "t:customerproject-topic": {
+    "x": 720,
+    "y": 736
+   },
+   "t:headerfile": {
+    "x": 0,
+    "y": 128
+   },
+   "t:linefile": {
+    "x": 0,
+    "y": 192
+   },
+   "t:price": {
+    "x": 1680,
+    "y": 200
+   },
+   "t:product-topic": {
+    "x": 720,
+    "y": 992
+   },
+   "t:quotationorderhead": {
+    "x": 0,
+    "y": 256
+   },
+   "t:salepricelist": {
+    "x": 0,
+    "y": 320
+   },
+   "t:supplier": {
+    "x": 0,
+    "y": 384
+   },
+   "t:systemtablefile": {
+    "x": 0,
+    "y": 448
+   },
+   "t:warehouse-topic": {
+    "x": 720,
+    "y": 864
+   }
+  }
+ }
 }

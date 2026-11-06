@@ -1,0 +1,25 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-catalog",
+  "project": "customerproject",
+  "registrationId": "customerproject.dev",
+  "layers": [
+    {
+      "id": "layer:customerproject.ingress-app",
+      "path": "ingress-app.json"
+    },
+    {
+      "id": "layer:customerproject.func-app",
+      "path": "func-app.json"
+    },
+    {
+      "id": "layer:customerproject.func-app.domain-update",
+      "path": "func-app.domain-update.json"
+    },
+    {
+      "id": "layer:customerproject.api",
+      "path": "api.json"
+    }
+  ]
+}

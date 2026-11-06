@@ -55,6 +55,9 @@ public sealed class RegisteredContainer
     public string Kind { get; set; } = "resource";   // resource | logical
     public List<string> ResourceRefs { get; set; } = new();
     public string? Scope { get; set; }
+    /// <summary>ADDENDA-010 §9 #26: apps covered by this container (may be empty, several for a multi-app container).
+    /// Optional; when absent FlowGraph falls back to <see cref="ResourceRefs"/>.</summary>
+    public List<string>? AppIds { get; set; }
 }
 
 /// <summary>ADDENDA-008 handler node: one [Function] + trigger, or a web app's HTTP surface.</summary>

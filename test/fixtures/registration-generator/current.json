@@ -1,0 +1,36 @@
+{
+ "id": "demo.dev",
+ "project": "demo",
+ "env": "dev",
+ "generatedAt": "2026-01-01T00:00:00+00:00",
+ "sources": [
+  { "kind": "terraform", "path": "/somewhere/unprovisioned_shared-misc" }
+ ],
+ "apps": [
+  {
+   "id": "app:ingress", "name": "Ingress", "kind": "func-ingress",
+   "azureResource": "func-old-name", "cloudRoleName": "confirmed-role-from-ai",
+   "local": { "port": 1, "runScript": "/old/run-ingress.ps1" },
+   "namingNote": "hand note that must survive"
+  },
+  { "id": "app:retired", "name": "Retired", "kind": "web" }
+ ],
+ "entities": [
+  { "id": "q:demo", "kind": "queue", "localName": "demo", "cloudName": "stale", "owner": "project", "scope": "both", "maxDeliveryCount": 99, "comment": "kept" },
+  { "id": "q:gone", "kind": "queue", "localName": "gone", "scope": "local" }
+ ],
+ "edges": [
+  { "from": "app:api", "to": "q:demo", "kind": "publish", "label": "commands", "scope": "both", "confidence": "inferred-from-settings" },
+  { "from": "app:ingress", "to": "q:demo-snapshot", "kind": "publish", "scope": "both", "confidence": "inferred-from-settings" },
+  { "from": "ext:kit", "to": "q:demo-ingress", "kind": "inject", "label": "seed kit", "scope": "local", "confidence": "manual" },
+  { "from": "app:retired", "to": "q:demo", "kind": "publish", "scope": "both", "confidence": "inferred-from-settings" }
+ ],
+ "observability": { "appInsights": { "resource": "appin-hand-picked", "subscription": "sub-name" } },
+ "samples": { "catalog": "old.json", "counts": { "all": 3 } },
+ "overrides": {
+  "note": "free text",
+  "entities": [ { "id": "q:notification", "owner": "project" } ],
+  "edges": [ { "from": "ext:partner", "to": "q:demo-ingress", "kind": "inject", "scope": "cloud", "confidence": "manual" } ]
+ },
+ "naming": { "values": { "project_code": "123", "env": "dev", "location_short": "nwe", "project_name": "acme" } }
+}

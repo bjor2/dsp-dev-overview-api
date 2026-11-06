@@ -134,6 +134,73 @@
                 }
               }
             }
+          },
+          "detection": {
+            "description": "ADDENDA-010 (LOCKED): optional hints for the listen-only local agent on Bjor's Windows PC. Matching is case-insensitive; globs use '**', '*' and Windows paths with either slash. Read-only use: the agent never starts/stops apps.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "processNames": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Image names without .exe, e.g. func, dotnet, Dahl.Price.Api"
+              },
+              "commandLineContains": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[^/\\\\]+$"
+                },
+                "description": "ALL hints must match a command-line token: exact segment stem (name minus .dll/.exe/.csproj) beats substring (ADDENDA-010 §2.4 v1.1)"
+              },
+              "executablePathGlobs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "ANY glob matches Win32_Process.ExecutablePath"
+              },
+              "workingDirGlobs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Reserved; NOT evaluated by agent v1 (Win32_Process has no cwd; PEB read is out of scope for listen-only)."
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "description": "TCP listen ports owned by the matched pid tree (Get-NetTCPConnection -State Listen)"
+              },
+              "repoRoot": {
+                "type": "string",
+                "description": "Root used to expand {repoRoot} in globs, e.g. C:/Users/bjooa/source/repos/DSP/dsp-price"
+              },
+              "logGlobs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Hint only. Agent tails a file only if it ALSO matches the agent's local AllowedLogGlobs config (ADDENDA-010 §2.7); none => console 'unavailable'."
+              },
+              "minScore": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 2,
+                "description": "Deprecated-in-place; v1 uses the fixed rule in ADDENDA-010 §2 (commandLine required + port when ports declared)."
+              }
+            }
           }
         }
       }
@@ -178,6 +245,14 @@
               "both"
             ],
             "default": "both"
+          },
+          "appIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^app:"
+            },
+            "description": "Apps covered by this container (may be empty; several for a multi-app container). ADDENDA-010 §9 row 26."
           }
         },
         "allOf": [
@@ -334,7 +409,7 @@
             }
           },
           "selfRequeue": {
-            "description": "Generator output (ADDENDA-008 \u00a711 I-1): code-attributed sends to the handler's own trigger entity. Never hand-edited.",
+            "description": "Generator output (ADDENDA-008 §11 I-1): code-attributed sends to the handler's own trigger entity. Never hand-edited.",
             "type": "array",
             "items": {
               "type": "object",

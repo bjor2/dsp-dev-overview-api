@@ -1,0 +1,481 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.ingress-app",
+  "project": "price",
+  "title": "Ingress — M3 import, snapshots and full reload",
+  "summary": "Inside the price Ingress container: import M3 change events, compose Optimera snapshots for the domain, and periodically write full Optimera datasets as CSV files for Functions to import.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:price.ingress-app"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T12:15:00+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/price.dev.json",
+      "note": "price ingress-app container (port unknown).",
+      "confidence": "confirmed",
+      "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs",
+      "note": "Lines 45–161: INGRESS subjects: 14 M3 *Changed contracts.",
+      "confidence": "confirmed",
+      "revision": "sha256:83ee45d4f62dca61e1b2e1b7d9dd6da87776fcd187f4e1d52f4cc7c0dc1bf496"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+      "note": "Lines 30–119: SNAPSHOT subjects: 4 Create*Snapshot and 6 Reload* commands.",
+      "confidence": "confirmed",
+      "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs",
+      "note": "Lines 14–89: six ReloadM3CloudOptimera* timers.",
+      "confidence": "confirmed",
+      "revision": "sha256:b51ebf13597022917bc50823cc44735cea4473a91af08230e1a363725c3ef443"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22773861",
+      "revision": "version:67",
+      "confidence": "confirmed",
+      "note": "Design intent: replace ADF CSV ingress with PICO/Table Event streams (OnPrem M3 then M3 Cloud); Ingress SQL on same instance as domain; minimal ingress storage. Not deployment proof."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774149",
+      "revision": "version:3",
+      "confidence": "confirmed",
+      "note": "Runbook/design: Features__IngressWithoutSnapshotCreation; admin recreate-all-snapshots for M3Cloud validproduct|directdeliverysupplier; SnapshotFullRebuildJobs in price-ingress DB; ASB empty/DLQ checks. Not deployment proof."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774388",
+      "revision": "version:2",
+      "confidence": "confirmed",
+      "note": "Historical 2021 overview: ADF nightly CSV dump → blob trigger → Function → SQL; Web API via APIM/Okta; names web-870-*/func-870-*/sql; ASB messages n/a. Design intent / historical ops — not proof of current topology."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256 (Team Lead ruled HEAD check unnecessary).",
+    "Ingress port is unknown in registration (label \"port ?\").",
+    "Admin recreate-all-snapshots for M3Cloud validproduct/directdeliverysupplier is documented in Confluence 22774149 v3; the actual M3Cloud read path is still not traced in reviewed repo files.",
+    "Unresolved conflict: Confluence 22774388 v2 describes ADF nightly CSV ingress and ASB messages as n/a, while registration + PICO design (22773861 v67) and current handlers imply ASB queues/PICO — which path is live is unresolved; do not invent."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.ingress.input",
+      "label": "Price ingress queue",
+      "kind": "external",
+      "responsibility": "Boundary input of 14 M3 *Changed contracts (locally forwarded from per-entity topic subscriptions).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs",
+          "note": "Lines 45–161: INGRESS subjects: 14 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:83ee45d4f62dca61e1b2e1b7d9dd6da87776fcd187f4e1d52f4cc7c0dc1bf496"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "q:price-ingress triggers price.fn.ingress; local subscriptions forward into it.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "q:price-ingress"
+    },
+    {
+      "id": "comp:price.ingress.import",
+      "label": "Change-event import",
+      "kind": "component",
+      "responsibility": "Persists ingress models and requests snapshot creation.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs",
+          "note": "Lines 45–161: INGRESS subjects: 14 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:83ee45d4f62dca61e1b2e1b7d9dd6da87776fcd187f4e1d52f4cc7c0dc1bf496"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs",
+          "note": "Line 55: import handlers send snapshot commands to the snapshot queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8b11fc449945960ffeeab058bea8a28e22776a04f8d0f77cd6e61b81d8d9bb3"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.ingress.storage",
+      "label": "Price ingress SQL",
+      "kind": "store",
+      "responsibility": "Persisted ingress models for snapshot composition.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Storage/Configuration/ConfigurationExtensions.cs",
+          "note": "Ingress SQL storage registration; no values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:26fe0e77034aa2e96cd7d73c227d03b9cf5e1fc67370bf2050afb7be3462727d"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price"
+    },
+    {
+      "id": "comp:price.ingress.snapshot-queue",
+      "label": "Price snapshot queue",
+      "kind": "external",
+      "responsibility": "Decouples import from snapshot composition and full reload.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+          "note": "Lines 30–119: SNAPSHOT subjects: 4 Create*Snapshot and 6 Reload* commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs",
+          "note": "Line 55: import handlers send snapshot commands to the snapshot queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8b11fc449945960ffeeab058bea8a28e22776a04f8d0f77cd6e61b81d8d9bb3"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "q:price-snapshot triggers price.fn.snapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "q:price-snapshot"
+    },
+    {
+      "id": "comp:price.ingress.reload-timers",
+      "label": "M3Cloud reload timers",
+      "kind": "component",
+      "responsibility": "Six timers enqueue Reload* commands.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs",
+          "note": "Lines 14–89: six ReloadM3CloudOptimera* timers.",
+          "confidence": "confirmed",
+          "revision": "sha256:b51ebf13597022917bc50823cc44735cea4473a91af08230e1a363725c3ef443"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.ingress.snapshots",
+      "label": "Optimera snapshot composition",
+      "kind": "component",
+      "responsibility": "Builds DirectDeliverySupplier and ValidProduct snapshots from ingress storage and sends them to the domain queue.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+          "note": "Lines 30–119: SNAPSHOT subjects: 4 Create*Snapshot and 6 Reload* commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemMasterChangedHandler.cs",
+          "note": "Lines 8–18: build snapshots from ingress storage and SendBatchAsync to domain queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:9fb42f72dd45607e5f6a3642e603116ece4f0c85a92ff26504182d0d36aae24c"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.ingress.full-reload",
+      "label": "Optimera full reload",
+      "kind": "component",
+      "responsibility": "Writes full Optimera datasets as CSV to staging blob and moves them to the Optimera file container.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+          "note": "Lines 30–119: SNAPSHOT subjects: 4 Create*Snapshot and 6 Reload* commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadHandlerBase.cs",
+          "note": "Lines 11–33: write reloaded models as CSV to staging blob then move to destination container.",
+          "confidence": "confirmed",
+          "revision": "sha256:70f8f68f2830d85c8f4f6875af0b351b3af76da65a094e2aa0542256b239065f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13–40: staging pricedumpfromoptimerastaging -> destination pricedumpfromoptimera.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.ingress.domain-out",
+      "label": "Price domain queue",
+      "kind": "external",
+      "responsibility": "Boundary output to Functions DOMAIN.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemMasterChangedHandler.cs",
+          "note": "Lines 8–18: build snapshots from ingress storage and SendBatchAsync to domain queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:9fb42f72dd45607e5f6a3642e603116ece4f0c85a92ff26504182d0d36aae24c"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "price.fn.snapshot publishes to q:price-domain.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "q:price-domain"
+    },
+    {
+      "id": "comp:price.ingress.optimera-files",
+      "label": "Optimera file container",
+      "kind": "store",
+      "responsibility": "Destination container pricedumpfromoptimera consumed by Functions blob trigger.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13–40: staging pricedumpfromoptimerastaging -> destination pricedumpfromoptimera.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Import/Configuration/ImportConfiguration.cs",
+          "note": "Line 8: OptimeraFilesContainerName = pricedumpfromoptimera.",
+          "confidence": "confirmed",
+          "revision": "sha256:f6b1e8618334f3d03ee4d2a18ea53efc2ed0f89167ba81ffcb7444ed4cab4d82"
+        }
+      ],
+      "uncertainties": [
+        "Registration has no publish edge from ingress-app to b:pricedumpfromoptimera; this code-evidenced link is not reflected in Flow."
+      ],
+      "owner": "price",
+      "flowEntityId": "b:pricedumpfromoptimera"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.ingress.in",
+      "from": "comp:price.ingress.input",
+      "to": "comp:price.ingress.import",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "M3 *Changed",
+      "description": "14 subjects.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs",
+          "note": "Lines 45–161: INGRESS subjects: 14 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:83ee45d4f62dca61e1b2e1b7d9dd6da87776fcd187f4e1d52f4cc7c0dc1bf496"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.persist",
+      "from": "comp:price.ingress.import",
+      "to": "comp:price.ingress.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Ingress models",
+      "description": "Persist.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs",
+          "note": "Line 55: import handlers send snapshot commands to the snapshot queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8b11fc449945960ffeeab058bea8a28e22776a04f8d0f77cd6e61b81d8d9bb3"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.request",
+      "from": "comp:price.ingress.import",
+      "to": "comp:price.ingress.snapshot-queue",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Create*Snapshot",
+      "description": "Snapshot requests.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs",
+          "note": "Line 55: import handlers send snapshot commands to the snapshot queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8b11fc449945960ffeeab058bea8a28e22776a04f8d0f77cd6e61b81d8d9bb3"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.reload-req",
+      "from": "comp:price.ingress.reload-timers",
+      "to": "comp:price.ingress.snapshot-queue",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Reload* (6)",
+      "description": "Scheduled full reloads.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/ReloadM3CloudDataTimerTriggers.cs",
+          "note": "Lines 14–89: six ReloadM3CloudOptimera* timers.",
+          "confidence": "confirmed",
+          "revision": "sha256:b51ebf13597022917bc50823cc44735cea4473a91af08230e1a363725c3ef443"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.compose",
+      "from": "comp:price.ingress.snapshot-queue",
+      "to": "comp:price.ingress.snapshots",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Create*Snapshot",
+      "description": "Four subjects.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+          "note": "Lines 30–119: SNAPSHOT subjects: 4 Create*Snapshot and 6 Reload* commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.reload",
+      "from": "comp:price.ingress.snapshot-queue",
+      "to": "comp:price.ingress.full-reload",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Reload*",
+      "description": "Six subjects.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+          "note": "Lines 30–119: SNAPSHOT subjects: 4 Create*Snapshot and 6 Reload* commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.read",
+      "from": "comp:price.ingress.snapshots",
+      "to": "comp:price.ingress.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Snapshot queries",
+      "description": "Read side.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemMasterChangedHandler.cs",
+          "note": "Lines 8–18: build snapshots from ingress storage and SendBatchAsync to domain queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:9fb42f72dd45607e5f6a3642e603116ece4f0c85a92ff26504182d0d36aae24c"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.out",
+      "from": "comp:price.ingress.snapshots",
+      "to": "comp:price.ingress.domain-out",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Update*FromSnapshot",
+      "description": "Batch send.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/CreateIngressSnapshot/CreateOptimeraValidProductSnapshotOnItemMasterChangedHandler.cs",
+          "note": "Lines 8–18: build snapshots from ingress storage and SendBatchAsync to domain queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:9fb42f72dd45607e5f6a3642e603116ece4f0c85a92ff26504182d0d36aae24c"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.files",
+      "from": "comp:price.ingress.full-reload",
+      "to": "comp:price.ingress.optimera-files",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Optimera CSVs",
+      "description": "Staging then move.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadHandlerBase.cs",
+          "note": "Lines 11–33: write reloaded models as CSV to staging blob then move to destination container.",
+          "confidence": "confirmed",
+          "revision": "sha256:70f8f68f2830d85c8f4f6875af0b351b3af76da65a094e2aa0542256b239065f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13–40: staging pricedumpfromoptimerastaging -> destination pricedumpfromoptimera.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

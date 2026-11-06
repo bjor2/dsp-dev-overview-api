@@ -1,0 +1,416 @@
+{
+ "id": "customerproject.dev",
+ "project": "customerproject",
+ "env": "dev",
+ "generatedAt": "2026-11-02T14:45:06+01:00",
+ "sources": [
+  {
+   "kind": "terraform",
+   "path": "/workspace/claranet/terraform/870-brodrene-dahl-dsp/dev/eu-west/unprovisioned_app-customerproject"
+  },
+  {
+   "kind": "terraform",
+   "path": "/workspace/claranet/terraform/870-brodrene-dahl-dsp/dev/eu-west/unprovisioned_app-customerproject-ingress"
+  },
+  {
+   "kind": "terraform",
+   "path": "/workspace/claranet/terraform/870-brodrene-dahl-dsp/dev/eu-west/unprovisioned_shared-message"
+  },
+  {
+   "kind": "trigger-scan",
+   "path": "/workspace/dsp/dsp-customerproject-localrun/src"
+  },
+  {
+   "kind": "local-config",
+   "path": "/workspace/dsp/local-dev/customerproject/Config.json"
+  },
+  {
+   "kind": "local-config",
+   "path": "/workspace/dsp/local-dev/customerproject/env.linux.ps1"
+  },
+  {
+   "kind": "run-script",
+   "path": "/workspace/dsp/local-dev/customerproject/run-api.linux.ps1"
+  },
+  {
+   "kind": "run-script",
+   "path": "/workspace/dsp/local-dev/customerproject/run-functions.linux.ps1"
+  },
+  {
+   "kind": "run-script",
+   "path": "/workspace/dsp/local-dev/customerproject/run-ingress.linux.ps1"
+  },
+  {
+   "kind": "sample-kit",
+   "path": "/workspace/dsp/local-dev/customerproject/seed-messages/Program.cs"
+  },
+  {
+   "kind": "terraform",
+   "path": "/workspace/claranet/terraform/870-brodrene-dahl-dsp/dev/eu-west/unprovisioned_shared-misc"
+  }
+ ],
+ "apps": [
+  {
+   "id": "app:api",
+   "name": "Api",
+   "kind": "web",
+   "azureResource": "web-870-dev-euw-dahl-customerproject",
+   "cloudRoleName": "web-870-dev-euw-dahl-customerproject",
+   "local": {
+    "port": 5011,
+    "url": "https://localhost:5011/swagger",
+    "runScript": "/workspace/dsp/local-dev/customerproject/run-api.linux.ps1"
+   },
+   "triggers": [],
+   "namingNote": "Seen in /workspace/dsp docs; cloudRoleName = site name (Functions/App Service default) — confirm in AI."
+  },
+  {
+   "id": "app:functions",
+   "name": "Functions",
+   "kind": "func",
+   "azureResource": "func-870-dev-euw-dahl-customerproject",
+   "cloudRoleName": "func-870-dev-euw-dahl-customerproject",
+   "local": {
+    "port": 7239,
+    "runScript": "/workspace/dsp/local-dev/customerproject/run-functions.linux.ps1"
+   },
+   "triggers": [
+    {
+     "function": "CustomerProjectQueueHandler",
+     "entityId": "q:customerproject",
+     "setting": "ServiceBusCustomerProjectQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs"
+    },
+    {
+     "function": "CustomerProjectDomainQueueHandler",
+     "entityId": "q:customerproject-domain",
+     "setting": "ServiceBusCustomerProjectDomainQueue",
+     "connection": "ServiceBusConnectionString",
+     "sourceFile": "src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs"
+    }
+   ],
+   "namingNote": "Seen in /workspace/dsp docs; cloudRoleName = site name (Functions/App Service default) — confirm in AI."
+  },
+  {
+   "id": "app:ingress",
+   "name": "Ingress",
+   "kind": "func-ingress",
+   "azureResource": "func-870-dev-euw-dahl-customerproject-ingress",
+   "cloudRoleName": "func-870-dev-euw-dahl-customerproject-ingress",
+   "local": {
+    "port": 7240,
+    "runScript": "/workspace/dsp/local-dev/customerproject/run-ingress.linux.ps1"
+   },
+   "triggers": [
+    {
+     "function": "IngressQueueHandler",
+     "entityId": "q:customerproject-ingress",
+     "setting": "ServiceBusCustomerProjectIngressQueue",
+     "connection": "ServiceBusNamespace",
+     "sourceFile": "src/Dahl.CustomerProject.Ingress.Functions/Functions/IngressQueueHandler.cs"
+    },
+    {
+     "function": "SnapshotQueueHandler",
+     "entityId": "q:customerproject-snapshot",
+     "setting": "ServiceBusCustomerProjectSnapshotQueue",
+     "connection": "ServiceBusNamespace",
+     "sourceFile": "src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs"
+    }
+   ],
+   "namingNote": "UNCONFIRMED: name built by external dahl-app module v2.1.8 (app_name=customerproject-ingress, short=custprin). Confirm via az / AI distinct cloud_RoleName."
+  }
+ ],
+ "entities": [
+  {
+   "id": "q:customerproject",
+   "kind": "queue",
+   "localName": "customerproject",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-customerproject",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:customerproject-ingress",
+   "kind": "queue",
+   "localName": "customerproject-ingress",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-customerproject-ingress",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:customerproject-snapshot",
+   "kind": "queue",
+   "localName": "customerproject-snapshot",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-customerproject-snapshot",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:customerproject-domain",
+   "kind": "queue",
+   "localName": "customerproject-domain",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-customerproject-domain",
+   "owner": "project",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:communication",
+   "kind": "queue",
+   "localName": "communication",
+   "cloudName": "sbq-870-dev-euw-dahl-shared-communication",
+   "owner": "shared",
+   "scope": "both",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  },
+  {
+   "id": "q:customerproject-topic-inspect",
+   "kind": "queue",
+   "localName": "customerproject-topic-inspect",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "t:customerproject-topic",
+   "kind": "topic",
+   "localName": "customerproject-topic",
+   "cloudName": "sbt-870-dev-euw-dahl-shared-customerproject",
+   "owner": "project",
+   "scope": "both"
+  },
+  {
+   "id": "s:customerproject-topic/local-inspect",
+   "kind": "subscription",
+   "localName": "local-inspect",
+   "topic": "t:customerproject-topic",
+   "forwardTo": "q:customerproject-topic-inspect",
+   "cloudName": null,
+   "owner": "project",
+   "scope": "local",
+   "maxDeliveryCount": 10
+  },
+  {
+   "id": "s:customerproject-topic/customerproject-to-customerproject",
+   "kind": "subscription",
+   "localName": "n/a",
+   "topic": "t:customerproject-topic",
+   "cloudName": "customerproject-to-customerproject",
+   "forwardTo": "q:customerproject",
+   "sqlFilter": "(sys.label = 'CustomerProjectOrderReferenceChanged')",
+   "owner": "project",
+   "scope": "cloud",
+   "maxDeliveryCount": 10,
+   "cloudMaxDeliveryCount": 3
+  }
+ ],
+ "edges": [
+  {
+   "from": "q:customerproject-domain",
+   "to": "app:functions",
+   "kind": "trigger",
+   "label": "CustomerProjectDomainQueueHandler",
+   "scope": "both",
+   "confidence": "code"
+  },
+  {
+   "from": "q:customerproject",
+   "to": "app:functions",
+   "kind": "trigger",
+   "label": "CustomerProjectQueueHandler",
+   "scope": "both",
+   "confidence": "code"
+  },
+  {
+   "from": "q:customerproject-ingress",
+   "to": "app:ingress",
+   "kind": "trigger",
+   "label": "IngressQueueHandler",
+   "scope": "both",
+   "confidence": "code"
+  },
+  {
+   "from": "q:customerproject-snapshot",
+   "to": "app:ingress",
+   "kind": "trigger",
+   "label": "SnapshotQueueHandler",
+   "scope": "both",
+   "confidence": "code"
+  },
+  {
+   "from": "app:api",
+   "to": "q:customerproject",
+   "kind": "publish",
+   "label": "commands",
+   "scope": "both",
+   "confidence": "inferred-from-settings"
+  },
+  {
+   "from": "app:api",
+   "to": "q:customerproject-ingress",
+   "kind": "publish",
+   "scope": "both",
+   "confidence": "inferred-from-settings"
+  },
+  {
+   "from": "app:api",
+   "to": "t:customerproject-topic",
+   "kind": "publish",
+   "scope": "both",
+   "confidence": "inferred-from-settings"
+  },
+  {
+   "from": "app:functions",
+   "to": "t:customerproject-topic",
+   "kind": "publish",
+   "label": "PCO events",
+   "scope": "both",
+   "confidence": "inferred-from-settings"
+  },
+  {
+   "from": "app:functions",
+   "to": "q:communication",
+   "kind": "publish",
+   "label": "notifications",
+   "scope": "both",
+   "confidence": "inferred-from-settings"
+  },
+  {
+   "from": "app:ingress",
+   "to": "q:customerproject-snapshot",
+   "kind": "publish",
+   "scope": "both",
+   "confidence": "inferred-from-settings"
+  },
+  {
+   "from": "app:ingress",
+   "to": "q:customerproject-domain",
+   "kind": "publish",
+   "scope": "both",
+   "confidence": "inferred-from-settings"
+  },
+  {
+   "from": "t:customerproject-topic",
+   "to": "s:customerproject-topic/local-inspect",
+   "kind": "subscription",
+   "scope": "local",
+   "confidence": "manual"
+  },
+  {
+   "from": "s:customerproject-topic/local-inspect",
+   "to": "q:customerproject-topic-inspect",
+   "kind": "forward",
+   "scope": "local",
+   "confidence": "manual"
+  },
+  {
+   "from": "t:customerproject-topic",
+   "to": "s:customerproject-topic/customerproject-to-customerproject",
+   "kind": "subscription",
+   "scope": "cloud",
+   "confidence": "terraform"
+  },
+  {
+   "from": "s:customerproject-topic/customerproject-to-customerproject",
+   "to": "q:customerproject",
+   "kind": "forward",
+   "label": "CustomerProjectOrderReferenceChanged",
+   "scope": "cloud",
+   "confidence": "terraform"
+  },
+  {
+   "from": "ext:seed-messages",
+   "to": "q:customerproject-ingress",
+   "kind": "inject",
+   "label": "6 ingress events",
+   "scope": "local",
+   "confidence": "manual"
+  },
+  {
+   "from": "ext:seed-messages",
+   "to": "q:customerproject",
+   "kind": "inject",
+   "label": "SyncProjectDates, CreateMissingProjects",
+   "scope": "local",
+   "confidence": "manual"
+  }
+ ],
+ "observability": {
+  "appInsights": {
+   "resource": "appin-870-dev-euw-dahl-shared",
+   "resourceGroup": "rg-870-dev-euw-dahl-shared",
+   "resourceGroupConfidence": "derived from unprovisioned_shared-misc (module.naming.resource_group with suffix incl. 'shared'); confirm with az",
+   "subscription": "870Z-DAHL-DigitalServicePlatform-West-Europe-DEV",
+   "subscriptionConfidence": "pattern from PPR/PRD names in dsp-role-and-knowledge.md; not in TF (var.azure_subscription_id) — confirm",
+   "workspaceBased": true,
+   "samplingPercentage": 12.5,
+   "dailyCapGb": 10,
+   "cloudRoleNames": [
+    "web-870-dev-euw-dahl-customerproject",
+    "func-870-dev-euw-dahl-customerproject",
+    "func-870-dev-euw-dahl-customerproject-ingress"
+   ]
+  },
+  "traceIt": {
+   "url": "https://traceit-dev.sgdn.no",
+   "status": "link-only; auth/API/correlation unknown"
+  }
+ },
+ "samples": {
+  "catalog": "catalog/customerproject.samples.json",
+  "source": "/workspace/dsp/local-dev/customerproject/seed-messages/Program.cs",
+  "ingressContentType": "application/json",
+  "ingressSubject": "<contract type name>",
+  "ingressApplicationProperties": {
+   "DataSource": "M3Cloud"
+  },
+  "counts": {
+   "ingress": 21,
+   "commands": 2,
+   "all": 23,
+   "one": 1
+  },
+  "commandsVia": "ICustomerProjectQueueClient (QueueClientBase) — see ADDENDA-001"
+ },
+ "overrides": {
+  "note": "local-inspect + customerproject-topic-inspect are local-only (Config.json), not in Terraform. Cloud-only inbound subs (price, erpeventpublisher, orderhistory, order -> customerproject; int-m3cloud-* -> customerproject-ingress; customerproject -> eventpointsink-ingress-2) to be added by generator with scope=cloud.",
+  "handlerIds": {
+   "CustomerProjectQueueHandler": "customerproject.fn.commands"
+  },
+  "handlerLabels": {
+   "customerproject.fn.ingress": "INGRESS",
+   "customerproject.fn.snapshot": "SNAPSHOT",
+   "customerproject.fn.domain": "DOMAIN",
+   "customerproject.fn.commands": "COMMANDS",
+   "customerproject.api.http": "HTTP controllers"
+  },
+  "logicalContainers": [],
+  "allowBidirectional": [],
+  "handlersNote": "ADDENDA-008: handlerIds/handlerLabels feed handlers[]; logicalContainers[] = multi-resource DOMAIN case (none today); allowBidirectional[{entity,node}] = I-1 escape hatch, keep empty."
+ },
+ "naming": {
+  "formula": {
+   "queue": "sbq-{project_code}-{env}-{location_short}-{project_name}-shared-{name}",
+   "topic": "sbt-{project_code}-{env}-{location_short}-{project_name}-shared-{name}",
+   "subscriptionV1": "{from}-to-{to}-subscription"
+  },
+  "values": {
+   "project_code": "870",
+   "env": "dev",
+   "location_short": "euw",
+   "project_name": "dahl"
+  },
+  "source": "Azure/naming module (sbq/sbt slugs) with suffix [project_code, env, location_short, project_name, 'shared'] in unprovisioned_shared-message/m-common.tf + r-servicebus-entities.tf; app settings in unprovisioned_app-customerproject/locals-*.tf use the same '${naming}-shared-<name>' pattern",
+  "maxDelivery": "cloud queues default 3 (try(max_delivery_count,3)), subscriptions fixed 3; local emulator Config.json = 10"
+ }
+}

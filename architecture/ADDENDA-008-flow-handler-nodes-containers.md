@@ -98,7 +98,8 @@ Example (customerproject.dev.json, excerpt):
 | q:customerproject → app:functions | → `fn.commands` |
 | q:customerproject-ingress → app:ingress | → `fn.ingress` |
 | q:customerproject-snapshot → app:ingress | → `fn.snapshot` |
-| app:api → q:customerproject / -ingress / topic | `api.http` → same |
+| app:api → q:customerproject / topic | `api.http` → same |
+| app:api → q:customerproject-ingress | **dropped** (Ruling OQ-2) |
 | app:functions → topic, → q:communication | `fn.commands` → same |
 | app:ingress → q:customerproject-snapshot | `fn.ingress` → same |
 | app:ingress → q:customerproject-domain | `fn.snapshot` → same |
@@ -183,7 +184,7 @@ flowchart LR
   end
   SEED[ext:seed-messages]-->QI; SEED-->QC
   QI-->ING-->QS-->SNAP-->QD-->DOM-->QC-->CMD
-  HTTP-->QC; HTTP-->QI; HTTP-->T
+  HTTP-->QC; HTTP-->T
   CMD-->T; CMD-->QM
   T-->SUB[s:local-inspect]-->QTI[q:customerproject-topic-inspect]
 ```
@@ -210,3 +211,10 @@ flowchart LR
 - **One Function per handler:** `FlowNode.handler.function: string` (singular), not `functions[]`. Exception: `*.http` handler has `function` omitted.
 - **Schema tightening:** trigger items `additionalProperties: false`; `entityId` required when `kind: servicebus`; handlers get `scope` (default = container scope); missing `schemaVersion` ⇒ 1 (loader accepts v1 and upgrades in memory); V-5 relaxed to "≥1 trigger edge per handler trigger" (competing consumers allowed).
 - **UI change required (add to §9):** FlowTab must honour stored positions **per node** (today it uses stored coords only when *all* nodes have one, `FlowTab.tsx:119`, `:252`). New `layout: "partial"` in FlowGraph: stored nodes/containers pinned, others auto-laid (ELK with fixed positions / interactive mode). Without this, migrated container positions are discarded.
+
+## Rulings (Team Lead, 2026-11-04)
+- **OQ-1:** self-requeue is shown as a **badge** on the handler (`selfRequeue[]`), not as an edge.
+- **OQ-2:** **drop** the `api.http → q:customerproject-ingress` edge. No send call exists in the Api. The example registration and the after-mermaid are updated. Local Flow edges: the old app-level 15 lose this edge and gain `fn.domain → q:customerproject`, so the count stays 15.
+- **OQ-3:** keep **one COMMANDS node** (`customerproject.fn.commands`). No split per message type.
+- **OQ-4:** the **Developer** confirms Dahl.Core `HandleWithRetry` re-send semantics with a read-only check of the package/decompiled source. Until then, retry is not drawn.
+- **OQ-5:** **no cloud-loop hint** for now.

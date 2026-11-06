@@ -14,6 +14,8 @@ I checked the API output against the UI/UX build in `ui/app/src/pages/flow/model
   "containers": [{
     "id": "container:customerproject.func-app", "label": "Functions :7239", "kind": "resource" | "logical",
     "resourceRefs": ["app:functions"],
+    "appIds": ["app:functions"],                // always present, may be empty, several for a multi-app container (ADDENDA-010 §9 #26)
+    "appId": "app:functions",                   // DEPRECATED alias, always present: appIds[0] if exactly one, else null
     "app": { "appKind": "func", "port": 7239, "cloudRoleName": "func-870-…", "attached": false },  // resource containers only
     "scope": "both",
     "position": { "x": 420, "y": 80 }           // ABSOLUTE, only when stored
@@ -79,3 +81,16 @@ Render's disk is ephemeral, so runtime positions are lost on every redeploy. The
   - add `positionSource` to the types;
   - relabel "Reset layout" as "Reset to default layout";
   - offer an "Export layout" hint.
+
+## Contract change (Nov 4 2026): `containers[].appIds` (+ deprecated `appId`)
+This is additive. It was requested by UI/UX to join Flow containers to the agent's `AppStatus` (ADDENDA-010, appKey `<regId>/<appId>`). It became `appIds` in ADDENDA-010 v1.2.2 §9 #26.
+
+- **`appIds: string[]`**, always present on every container, may be empty. These are the apps the container covers.
+  - Source: the registration container's optional `appIds` (schema: `containers[].appIds`, items `^app:`).
+  - When `appIds` is absent from the registration, the API falls back to the container's `resourceRefs`.
+  - The values are passed through as written; they are not checked against `apps[]`.
+- **`appId: string | null`** is a **deprecated** alias, kept for one version. It is always present: `appIds[0]` when `appIds` has exactly one entry, else `null` (none, or a multi-app container). Readers should move to `appIds`.
+- Today every container of customerproject.dev (3) and price.dev (4) has exactly one app, so `appIds` = `[appId]`.
+- `containers[].app` (appKind/port/cloudRoleName/attached) is unchanged. It is still only set for a `resource` container with exactly one `resourceRefs` entry that names a registered app.
+- **Agent join:** `appKey = projectId + "/" + appIds[i]` (e.g. `price.dev/app:functions`) matches `AppStatus.regId/appId` from the front door's `GET /agent/status`.
+- **Generator:** `tools/Generate-Registration` keeps a hand-written `containers[].appIds` on regenerate. The generator owns only `id`/`label`/`kind`/`resourceRefs`/`scope`, and other keys are merged through, as with `layoutDefaults`. A test covers this.
