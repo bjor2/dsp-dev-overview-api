@@ -1,0 +1,452 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.fn.commands.project-lifecycle",
+  "project": "customerproject",
+  "title": "COMMANDS \u2014 project lifecycle decisions",
+  "summary": "Drill-down of \u201cProject creation and date sync\u201d: when a project is created from an ERP delivery address, how its dates follow the address, and how backfill sweeps fan out. Conceptual responsibilities, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:customerproject.fn.commands",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T17:45:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+      "note": "Lines 142-168: CreateProjectsFromErpReferences/HandleCustomerAddressChanged via HandleWithRetry; CreateMissingProjects/SyncProjectDates via HandleOnce.",
+      "confidence": "confirmed",
+      "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+      "note": "Lines 35-90: skip existing project; build project from stored address (name=Address2, dates=ValidFrom/ValidTo); missing address throws; publish CustomerProjectChanged + PopulateOrderReferences.",
+      "confidence": "confirmed",
+      "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+      "note": "Lines 34-69: missing project -> warn+return; align dates to address; inactive->active sends PopulateOrderReferences; CustomerProjectChanged always sent.",
+      "confidence": "confirmed",
+      "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateMissingProjectsHandler.cs",
+      "note": "Lines 38-60: addresses missing a project, batched 100 -> CreateProjectsFromErpReferences. Lines 42-45 log non-Optimera tenant as unsupported but do not return.",
+      "confidence": "confirmed",
+      "revision": "sha256:3f7f2646796f455372029f5615ed198218577933e68bd94fb93594723a510d60"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/SyncProjectDatesHandler.cs",
+      "note": "Lines 36-53: project ids whose dates differ from address -> one HandleCustomerAddressChanged each. Lines 40-43 log non-Optimera tenant but do not return.",
+      "confidence": "confirmed",
+      "revision": "sha256:f9034246830add085d4326c833b2eb2d24bdb0abc0cbc69d056bb4cd5744bc45"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779513",
+      "revision": "version:4",
+      "confidence": "confirmed",
+      "note": "Opened full markdown (2023 workshop): project framed around delivery address; intent, not proof of current behaviour."
+    }
+  ],
+  "uncertainties": [
+    "Which address changes reach this layer is decided in DOMAIN (layer:customerproject.func-app.domain-update).",
+    "Confluence 22779513 v4 delivery-address-as-project framing is design intent; not reconciled with code.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.pl.input",
+      "label": "COMMANDS queue (lifecycle subjects)",
+      "kind": "external",
+      "responsibility": "Boundary input: CreateProjectsFromErpReferences, HandleCustomerAddressChanged (retry-handled), CreateMissingProjects, SyncProjectDates (handled once).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 142-168: CreateProjectsFromErpReferences/HandleCustomerAddressChanged via HandleWithRetry; CreateMissingProjects/SyncProjectDates via HandleOnce.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:customerproject"
+    },
+    {
+      "id": "comp:customerproject.pl.create",
+      "label": "Create project from ERP reference",
+      "kind": "component",
+      "responsibility": "Decision: project already exists for the reference -> skip (idempotent). Transform: stored CustomerAddress -> new CustomerProject (ProjectName = Address2, Start/End = address validity). No stored address -> failure that fails the whole batch message.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35-90: skip existing project; build project from stored address (name=Address2, dates=ValidFrom/ValidTo); missing address throws; publish CustomerProjectChanged + PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        }
+      ],
+      "uncertainties": [
+        "Partial-batch behaviour on retry relies on the skip-existing check; retry/settlement internals are in Dahl.Core (not reviewed)."
+      ]
+    },
+    {
+      "id": "comp:customerproject.pl.date-sync",
+      "label": "Align project with address change",
+      "kind": "component",
+      "responsibility": "Decision: project dates differ from address validity -> overwrite project dates. Decision: project transitions inactive->active -> request order-reference population. Always republishes CustomerProjectChanged, even without date changes.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+          "note": "Lines 34-69: missing project -> warn+return; align dates to address; inactive->active sends PopulateOrderReferences; CustomerProjectChanged always sent.",
+          "confidence": "confirmed",
+          "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+        }
+      ],
+      "uncertainties": [
+        "IsActive derivation lives on the model; not re-derived here."
+      ]
+    },
+    {
+      "id": "comp:customerproject.pl.backfill",
+      "label": "Backfill sweeps",
+      "kind": "component",
+      "responsibility": "Fan-out only: finds addresses without projects (batches of 100) and projects with drifting dates, and re-enqueues them as the two per-item commands above. Intended Optimera-only.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateMissingProjectsHandler.cs",
+          "note": "Lines 38-60: addresses missing a project, batched 100 -> CreateProjectsFromErpReferences. Lines 42-45 log non-Optimera tenant as unsupported but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:3f7f2646796f455372029f5615ed198218577933e68bd94fb93594723a510d60"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/SyncProjectDatesHandler.cs",
+          "note": "Lines 36-53: project ids whose dates differ from address -> one HandleCustomerAddressChanged each. Lines 40-43 log non-Optimera tenant but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:f9034246830add085d4326c833b2eb2d24bdb0abc0cbc69d056bb4cd5744bc45"
+        }
+      ],
+      "uncertainties": [
+        "Code logs non-Optimera tenants as unsupported but continues; whether that is intentional is unresolved (source-vs-intent conflict, not fixed here).",
+        "Trigger for sweeps (manual/timer) not evidenced in reviewed source; deferred."
+      ]
+    },
+    {
+      "id": "comp:customerproject.pl.storage",
+      "label": "CustomerProject SQL",
+      "kind": "store",
+      "responsibility": "Projects and stored customer addresses (read address, upsert project, sweep queries).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35-90: skip existing project; build project from stored address (name=Address2, dates=ValidFrom/ValidTo); missing address throws; publish CustomerProjectChanged + PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateMissingProjectsHandler.cs",
+          "note": "Lines 38-60: addresses missing a project, batched 100 -> CreateProjectsFromErpReferences. Lines 42-45 log non-Optimera tenant as unsupported but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:3f7f2646796f455372029f5615ed198218577933e68bd94fb93594723a510d60"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.pl.topic",
+      "label": "customerproject topic",
+      "kind": "external",
+      "responsibility": "CustomerProjectChanged events for subscribers.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35-90: skip existing project; build project from stored address (name=Address2, dates=ValidFrom/ValidTo); missing address throws; publish CustomerProjectChanged + PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+          "note": "Lines 34-69: missing project -> warn+return; align dates to address; inactive->active sends PopulateOrderReferences; CustomerProjectChanged always sent.",
+          "confidence": "confirmed",
+          "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "t:customerproject-topic"
+    },
+    {
+      "id": "comp:customerproject.pl.requeue",
+      "label": "COMMANDS queue (follow-ups)",
+      "kind": "external",
+      "responsibility": "Self-requeued PopulateOrderReferences and fan-out commands (badge semantics in parent).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35-90: skip existing project; build project from stored address (name=Address2, dates=ValidFrom/ValidTo); missing address throws; publish CustomerProjectChanged + PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateMissingProjectsHandler.cs",
+          "note": "Lines 38-60: addresses missing a project, batched 100 -> CreateProjectsFromErpReferences. Lines 42-45 log non-Optimera tenant as unsupported but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:3f7f2646796f455372029f5615ed198218577933e68bd94fb93594723a510d60"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/SyncProjectDatesHandler.cs",
+          "note": "Lines 36-53: project ids whose dates differ from address -> one HandleCustomerAddressChanged each. Lines 40-43 log non-Optimera tenant but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:f9034246830add085d4326c833b2eb2d24bdb0abc0cbc69d056bb4cd5744bc45"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:customerproject"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.pl.in-create",
+      "from": "comp:customerproject.pl.input",
+      "to": "comp:customerproject.pl.create",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CreateProjectsFromErpReferences",
+      "description": "Reference batch.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 142-168: CreateProjectsFromErpReferences/HandleCustomerAddressChanged via HandleWithRetry; CreateMissingProjects/SyncProjectDates via HandleOnce.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.in-sync",
+      "from": "comp:customerproject.pl.input",
+      "to": "comp:customerproject.pl.date-sync",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "HandleCustomerAddressChanged",
+      "description": "One address id.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 142-168: CreateProjectsFromErpReferences/HandleCustomerAddressChanged via HandleWithRetry; CreateMissingProjects/SyncProjectDates via HandleOnce.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.in-backfill",
+      "from": "comp:customerproject.pl.input",
+      "to": "comp:customerproject.pl.backfill",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CreateMissingProjects / SyncProjectDates",
+      "description": "Sweep requests.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 142-168: CreateProjectsFromErpReferences/HandleCustomerAddressChanged via HandleWithRetry; CreateMissingProjects/SyncProjectDates via HandleOnce.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.create-store",
+      "from": "comp:customerproject.pl.create",
+      "to": "comp:customerproject.pl.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Address -> project",
+      "description": "Read address, insert project.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35-90: skip existing project; build project from stored address (name=Address2, dates=ValidFrom/ValidTo); missing address throws; publish CustomerProjectChanged + PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.sync-store",
+      "from": "comp:customerproject.pl.date-sync",
+      "to": "comp:customerproject.pl.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Project dates",
+      "description": "Upsert when dates drift.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+          "note": "Lines 34-69: missing project -> warn+return; align dates to address; inactive->active sends PopulateOrderReferences; CustomerProjectChanged always sent.",
+          "confidence": "confirmed",
+          "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.backfill-store",
+      "from": "comp:customerproject.pl.backfill",
+      "to": "comp:customerproject.pl.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Sweep queries",
+      "description": "Missing projects / drifting dates.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateMissingProjectsHandler.cs",
+          "note": "Lines 38-60: addresses missing a project, batched 100 -> CreateProjectsFromErpReferences. Lines 42-45 log non-Optimera tenant as unsupported but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:3f7f2646796f455372029f5615ed198218577933e68bd94fb93594723a510d60"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/SyncProjectDatesHandler.cs",
+          "note": "Lines 36-53: project ids whose dates differ from address -> one HandleCustomerAddressChanged each. Lines 40-43 log non-Optimera tenant but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:f9034246830add085d4326c833b2eb2d24bdb0abc0cbc69d056bb4cd5744bc45"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.create-topic",
+      "from": "comp:customerproject.pl.create",
+      "to": "comp:customerproject.pl.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CustomerProjectChanged",
+      "description": "On creation.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35-90: skip existing project; build project from stored address (name=Address2, dates=ValidFrom/ValidTo); missing address throws; publish CustomerProjectChanged + PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.sync-topic",
+      "from": "comp:customerproject.pl.date-sync",
+      "to": "comp:customerproject.pl.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CustomerProjectChanged",
+      "description": "Always.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+          "note": "Lines 34-69: missing project -> warn+return; align dates to address; inactive->active sends PopulateOrderReferences; CustomerProjectChanged always sent.",
+          "confidence": "confirmed",
+          "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.create-requeue",
+      "from": "comp:customerproject.pl.create",
+      "to": "comp:customerproject.pl.requeue",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "PopulateOrderReferences",
+      "description": "After creation.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35-90: skip existing project; build project from stored address (name=Address2, dates=ValidFrom/ValidTo); missing address throws; publish CustomerProjectChanged + PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.sync-requeue",
+      "from": "comp:customerproject.pl.date-sync",
+      "to": "comp:customerproject.pl.requeue",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "PopulateOrderReferences",
+      "description": "Only on activation.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+          "note": "Lines 34-69: missing project -> warn+return; align dates to address; inactive->active sends PopulateOrderReferences; CustomerProjectChanged always sent.",
+          "confidence": "confirmed",
+          "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pl.backfill-requeue",
+      "from": "comp:customerproject.pl.backfill",
+      "to": "comp:customerproject.pl.requeue",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Per-item commands",
+      "description": "Fan-out to create / date-sync.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateMissingProjectsHandler.cs",
+          "note": "Lines 38-60: addresses missing a project, batched 100 -> CreateProjectsFromErpReferences. Lines 42-45 log non-Optimera tenant as unsupported but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:3f7f2646796f455372029f5615ed198218577933e68bd94fb93594723a510d60"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/SyncProjectDatesHandler.cs",
+          "note": "Lines 36-53: project ids whose dates differ from address -> one HandleCustomerAddressChanged each. Lines 40-43 log non-Optimera tenant but do not return.",
+          "confidence": "confirmed",
+          "revision": "sha256:f9034246830add085d4326c833b2eb2d24bdb0abc0cbc69d056bb4cd5744bc45"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

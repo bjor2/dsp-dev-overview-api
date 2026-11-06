@@ -1,0 +1,364 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.fn.commands.work",
+  "project": "price",
+  "title": "COMMANDS \u2014 import, campaign-change and price-history work",
+  "summary": "Drill-down of \u201cCommands\u201d: three distinct responsibilities with their own decisions. Composition stages, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:price.fn.commands",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T18:10:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+      "note": "Lines 71-188: 14 COMMANDS subjects (Nexstep/VisionPoint import/delete, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices).",
+      "confidence": "confirmed",
+      "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Application/Features/Import/Nexstep/ImportNexstepPriceListPriceHandler.cs",
+      "note": "Lines 26-70: ignore older ValidFrom than last valid item; upsert price (ValidTo=max); add missing N-MONTERX price-list-table rows per warehouse.",
+      "confidence": "confirmed",
+      "revision": "sha256:0d53e6952a800822fd1782ebe4e8608390d9b0a86e518f909f79640636567031"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Application/Features/Import/VisionPoint/ImportVisionPointPriceListPriceHandler.cs",
+      "note": "Lines 23-60: Monter-only (non-transient error otherwise); reject events older than stored LastModifiedUtc; upsert price; add N-MONTERX table row.",
+      "confidence": "confirmed",
+      "revision": "sha256:c9d0ef738e8c95a240ea3ac2a3c6387744146007944e883934c660bb4558a397"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+      "note": "Lines 34-57: diff saved vs current item campaigns, publish ItemCampaignsChanged batch, then save new baseline.",
+      "confidence": "confirmed",
+      "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Application/Features/PriceHistory/SaveLowestPriceSnapshotHandler.cs",
+      "note": "Lines 31-41: lowest-price snapshot scoped by configured Monter franchise warehouse -> ERP data source.",
+      "confidence": "confirmed",
+      "revision": "sha256:cb1f61a74bf12baa00f2242827ba48044c2565fb5b113adc1e2e62c5873a46fd"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776628",
+      "revision": "version:8",
+      "confidence": "confirmed",
+      "note": "Before-price design: daily lowest-price snapshot via timer\u2192queue; schedule 07:00/13:00/19:00; campaign before-price after each snapshot; purge >6 months via separate timer; Outlet hardcoded campaign id; API returns before price in campaign price part. Design intent matching timer\u2192queue handlers \u2014 not a binding of exact cron expressions beyond this page."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.work.input",
+      "label": "COMMANDS queue",
+      "kind": "external",
+      "responsibility": "Import/delete, campaign and price-history subjects (API admin and timers enqueue).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+          "note": "Lines 71-188: 14 COMMANDS subjects (Nexstep/VisionPoint import/delete, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices).",
+          "confidence": "confirmed",
+          "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:price"
+    },
+    {
+      "id": "comp:price.work.import",
+      "label": "External price-list import",
+      "kind": "component",
+      "responsibility": "Nexstep/VisionPoint prices and campaigns into the N-MONTERX price-list table. Decisions: stale-event rejection (Nexstep by ValidFrom, VisionPoint by LastModifiedUtc); VisionPoint accepted for Monter only; ensures warehouse rows in the price-list table.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Import/Nexstep/ImportNexstepPriceListPriceHandler.cs",
+          "note": "Lines 26-70: ignore older ValidFrom than last valid item; upsert price (ValidTo=max); add missing N-MONTERX price-list-table rows per warehouse.",
+          "confidence": "confirmed",
+          "revision": "sha256:0d53e6952a800822fd1782ebe4e8608390d9b0a86e518f909f79640636567031"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Import/VisionPoint/ImportVisionPointPriceListPriceHandler.cs",
+          "note": "Lines 23-60: Monter-only (non-transient error otherwise); reject events older than stored LastModifiedUtc; upsert price; add N-MONTERX table row.",
+          "confidence": "confirmed",
+          "revision": "sha256:c9d0ef738e8c95a240ea3ac2a3c6387744146007944e883934c660bb4558a397"
+        }
+      ],
+      "uncertainties": [
+        "Campaign/item and delete handlers follow the same family; not drilled individually.",
+        "Calculator redirects N-MONTER to N-MONTERX (see layer:price.api.get-prices.calculator)."
+      ]
+    },
+    {
+      "id": "comp:price.work.campaign-diff",
+      "label": "Campaign change detection",
+      "kind": "component",
+      "responsibility": "Diffs stored item-campaign baseline against current campaigns, publishes ItemCampaignsChanged (added/removed), then saves the new baseline; admin path republishes all.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+          "note": "Lines 34-57: diff saved vs current item campaigns, publish ItemCampaignsChanged batch, then save new baseline.",
+          "confidence": "confirmed",
+          "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Admin/PublishAllItemCampaignsHandler.cs",
+          "note": "Lines 19-48: publish all item campaigns to price topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:2e00d40d4fbe6ce1c04cfc4f92477ae63d4701c33fbf5cc2359023203418eafa"
+        }
+      ],
+      "uncertainties": [
+        "Publish happens before baseline save; a failure between them leads to re-publish on next run (inferred from order, not tested)."
+      ]
+    },
+    {
+      "id": "comp:price.work.history",
+      "label": "Lowest-price history",
+      "kind": "component",
+      "responsibility": "Persists daily lowest-price snapshots (scoped by configured franchise warehouse -> data source) and campaign before-prices; computation is in storage.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/PriceHistory/SaveLowestPriceSnapshotHandler.cs",
+          "note": "Lines 31-41: lowest-price snapshot scoped by configured Monter franchise warehouse -> ERP data source.",
+          "confidence": "confirmed",
+          "revision": "sha256:cb1f61a74bf12baa00f2242827ba48044c2565fb5b113adc1e2e62c5873a46fd"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/PriceHistory/SaveCampaignLowestPricesHandler.cs",
+          "note": "Lines 23-27: campaign lowest prices computed in storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:c26e159e6202b6aa69a64b2995533b58365964fa9a7378b59ec188d863f79fb6"
+        }
+      ],
+      "uncertainties": [
+        "SQL inside IPriceStorage not reviewed; Confluence 22776628 v8 schedule/purge is design intent."
+      ]
+    },
+    {
+      "id": "comp:price.work.db",
+      "label": "Price DB (write side)",
+      "kind": "store",
+      "responsibility": "Prices, price-list tables, campaigns, item-campaign baseline, price history.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Import/Nexstep/ImportNexstepPriceListPriceHandler.cs",
+          "note": "Lines 26-70: ignore older ValidFrom than last valid item; upsert price (ValidTo=max); add missing N-MONTERX price-list-table rows per warehouse.",
+          "confidence": "confirmed",
+          "revision": "sha256:0d53e6952a800822fd1782ebe4e8608390d9b0a86e518f909f79640636567031"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+          "note": "Lines 34-57: diff saved vs current item campaigns, publish ItemCampaignsChanged batch, then save new baseline.",
+          "confidence": "confirmed",
+          "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/PriceHistory/SaveLowestPriceSnapshotHandler.cs",
+          "note": "Lines 31-41: lowest-price snapshot scoped by configured Monter franchise warehouse -> ERP data source.",
+          "confidence": "confirmed",
+          "revision": "sha256:cb1f61a74bf12baa00f2242827ba48044c2565fb5b113adc1e2e62c5873a46fd"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.work.topic",
+      "label": "price topic",
+      "kind": "external",
+      "responsibility": "ItemCampaignsChanged.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+          "note": "Lines 34-57: diff saved vs current item campaigns, publish ItemCampaignsChanged batch, then save new baseline.",
+          "confidence": "confirmed",
+          "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "t:price"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.work.in-import",
+      "from": "comp:price.work.input",
+      "to": "comp:price.work.import",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Nexstep / VisionPoint",
+      "description": "Import/delete subjects.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+          "note": "Lines 71-188: 14 COMMANDS subjects (Nexstep/VisionPoint import/delete, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices).",
+          "confidence": "confirmed",
+          "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.work.in-diff",
+      "from": "comp:price.work.input",
+      "to": "comp:price.work.campaign-diff",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CheckItemCampaigns / PublishAllItemCampaigns",
+      "description": "Timer/admin.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+          "note": "Lines 71-188: 14 COMMANDS subjects (Nexstep/VisionPoint import/delete, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices).",
+          "confidence": "confirmed",
+          "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.work.in-hist",
+      "from": "comp:price.work.input",
+      "to": "comp:price.work.history",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "SaveLowestPriceSnapshot / SaveCampaignLowestPrices",
+      "description": "Timer.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+          "note": "Lines 71-188: 14 COMMANDS subjects (Nexstep/VisionPoint import/delete, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices).",
+          "confidence": "confirmed",
+          "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.work.import-db",
+      "from": "comp:price.work.import",
+      "to": "comp:price.work.db",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Price + table rows",
+      "description": "Upsert.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Import/Nexstep/ImportNexstepPriceListPriceHandler.cs",
+          "note": "Lines 26-70: ignore older ValidFrom than last valid item; upsert price (ValidTo=max); add missing N-MONTERX price-list-table rows per warehouse.",
+          "confidence": "confirmed",
+          "revision": "sha256:0d53e6952a800822fd1782ebe4e8608390d9b0a86e518f909f79640636567031"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Import/VisionPoint/ImportVisionPointPriceListPriceHandler.cs",
+          "note": "Lines 23-60: Monter-only (non-transient error otherwise); reject events older than stored LastModifiedUtc; upsert price; add N-MONTERX table row.",
+          "confidence": "confirmed",
+          "revision": "sha256:c9d0ef738e8c95a240ea3ac2a3c6387744146007944e883934c660bb4558a397"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.work.diff-db",
+      "from": "comp:price.work.campaign-diff",
+      "to": "comp:price.work.db",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Baseline",
+      "description": "Read diff, save new baseline.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+          "note": "Lines 34-57: diff saved vs current item campaigns, publish ItemCampaignsChanged batch, then save new baseline.",
+          "confidence": "confirmed",
+          "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.work.diff-topic",
+      "from": "comp:price.work.campaign-diff",
+      "to": "comp:price.work.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "ItemCampaignsChanged",
+      "description": "Batch.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+          "note": "Lines 34-57: diff saved vs current item campaigns, publish ItemCampaignsChanged batch, then save new baseline.",
+          "confidence": "confirmed",
+          "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Admin/PublishAllItemCampaignsHandler.cs",
+          "note": "Lines 19-48: publish all item campaigns to price topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:2e00d40d4fbe6ce1c04cfc4f92477ae63d4701c33fbf5cc2359023203418eafa"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.work.hist-db",
+      "from": "comp:price.work.history",
+      "to": "comp:price.work.db",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Lowest prices",
+      "description": "Snapshot.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/PriceHistory/SaveLowestPriceSnapshotHandler.cs",
+          "note": "Lines 31-41: lowest-price snapshot scoped by configured Monter franchise warehouse -> ERP data source.",
+          "confidence": "confirmed",
+          "revision": "sha256:cb1f61a74bf12baa00f2242827ba48044c2565fb5b113adc1e2e62c5873a46fd"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/PriceHistory/SaveCampaignLowestPricesHandler.cs",
+          "note": "Lines 23-27: campaign lowest prices computed in storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:c26e159e6202b6aa69a64b2995533b58365964fa9a7378b59ec188d863f79fb6"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

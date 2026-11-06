@@ -40,6 +40,18 @@
     {
       "id": "layer:price.api-batch",
       "path": "api-batch.json"
+    },
+    {
+      "id": "layer:price.api.get-prices.calculator",
+      "path": "api.get-prices.calculator.json"
+    },
+    {
+      "id": "layer:price.fn.snapshot.full-reload",
+      "path": "fn.snapshot.full-reload.json"
+    },
+    {
+      "id": "layer:price.fn.commands.work",
+      "path": "fn.commands.work.json"
     }
   ]
 }

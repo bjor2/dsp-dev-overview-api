@@ -1,0 +1,408 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.fn.snapshot.full-reload",
+  "project": "price",
+  "title": "SNAPSHOT \u2014 Optimera full reload",
+  "summary": "Drill-down of \u201cFull reload\u201d: dataset selection, CSV serialisation and staged publish to the Optimera file container. Composition stages, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:price.fn.snapshot",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T18:10:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+      "note": "Lines 30-119: SNAPSHOT subjects incl. 6 Reload* commands.",
+      "confidence": "confirmed",
+      "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadHandlerBase.cs",
+      "note": "Lines 15-58: file name {dataSource}_{file}; CSV ; delimiter, UTF-8, per-datasource class map; bad data throws; then move to destination.",
+      "confidence": "confirmed",
+      "revision": "sha256:70f8f68f2830d85c8f4f6875af0b351b3af76da65a094e2aa0542256b239065f"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+      "note": "Lines 13-41: write to pricedumpfromoptimerastaging; move = copy to pricedumpfromoptimera then delete staging.",
+      "confidence": "confirmed",
+      "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774149",
+      "revision": "version:3",
+      "confidence": "confirmed",
+      "note": "Runbook/design: Features__IngressWithoutSnapshotCreation; admin recreate-all-snapshots for M3Cloud validproduct|directdeliverysupplier; SnapshotFullRebuildJobs in price-ingress DB; ASB empty/DLQ checks. Not deployment proof."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774388",
+      "revision": "version:2",
+      "confidence": "confirmed",
+      "note": "Historical 2021 overview: ADF nightly CSV dump \u2192 blob trigger \u2192 Function \u2192 SQL; Web API via APIM/Okta; names web-870-*/func-870-*/sql; ASB messages n/a. Design intent / historical ops \u2014 not proof of current topology."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256.",
+    "Unresolved conflict preserved: Confluence 22774388 v2 describes ADF nightly CSV ingress (ASB n/a), while registration + PICO design (22773861 v67) and current handlers imply ASB queues/PICO; which path is live is unresolved.",
+    "This full reload regenerates the CSV files that the historical ADF path (22774388 v2) dumped; it is not evidence ADF runs today.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.reload.input",
+      "label": "SNAPSHOT queue (Reload* subjects)",
+      "kind": "external",
+      "responsibility": "Six Reload* commands (timer- or admin-enqueued).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+          "note": "Lines 30-119: SNAPSHOT subjects incl. 6 Reload* commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:price-snapshot"
+    },
+    {
+      "id": "comp:price.reload.select",
+      "label": "Dataset selection",
+      "kind": "component",
+      "responsibility": "Each Reload* subject selects one full Optimera dataset (campaigns, campaign prices, offer prices, price lists, price-list-table campaigns/price lists) from persisted ingress models and names the target file.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraCampaignHandler.cs",
+          "note": "Lines 19-24: build Campaign models from full-reload storage and write Campaigns.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:db00928fc360af4fab88bbc1a05bc4ee686cdb210a6ee09650b2b570eb3c57b2"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraCampaignPriceHandler.cs",
+          "note": "Lines 19-24: build CampaignPrice models from full-reload storage and write CampaignPrices.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:a98f9bd91000c7f24949c36a06ebfaa24e5e5edc0a3d41a2f8f69b9d37b74b94"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraOfferPriceHandler.cs",
+          "note": "Lines 19-24: build OfferPrice models from full-reload storage and write OfferPrices.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:05a167919807d13cd7a583527f08f9296506aaad91d11d57d8bc52b0d87f2862"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListHandler.cs",
+          "note": "Lines 19-24: build PriceList models from full-reload storage and write PriceLists.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:8a14bde5c936402da9685870f3b6c84b5dd89ef36b1f5d4e039dd01f89c522e1"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListTableCampaignHandler.cs",
+          "note": "Lines 19-24: build PriceListTableCampaign models from full-reload storage and write PriceListTableCampaigns.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:9f6b742271889eb97d24b7c1f7d5c8ac434dfb2e9f642713017d497f887054ac"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListTablePriceListHandler.cs",
+          "note": "Lines 19-24: build PriceListTablePriceList models from full-reload storage and write PriceListTablePriceLists.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:180c87e768fede1ebcfa0aa86dec6dc37be63a59a15a0694bae9675ec1f69bf4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.reload.csv",
+      "label": "CSV serialisation",
+      "kind": "component",
+      "responsibility": "Transforms models to the Optimera file format: data-source-specific column map, \";\" delimiter, UTF-8; any bad row aborts the whole file.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadHandlerBase.cs",
+          "note": "Lines 15-58: file name {dataSource}_{file}; CSV ; delimiter, UTF-8, per-datasource class map; bad data throws; then move to destination.",
+          "confidence": "confirmed",
+          "revision": "sha256:70f8f68f2830d85c8f4f6875af0b351b3af76da65a094e2aa0542256b239065f"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.reload.publish",
+      "label": "Staged publish",
+      "kind": "component",
+      "responsibility": "Writes to a staging container, then copies to the consumer container and deletes staging so the blob trigger only sees complete files.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13-41: write to pricedumpfromoptimerastaging; move = copy to pricedumpfromoptimera then delete staging.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        }
+      ],
+      "uncertainties": [
+        "Copy-then-delete is not an atomic rename; overwrite semantics for concurrent reloads not evidenced."
+      ]
+    },
+    {
+      "id": "comp:price.reload.storage",
+      "label": "Ingress SQL (persisted models)",
+      "kind": "store",
+      "responsibility": "Full-reload read models.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraCampaignHandler.cs",
+          "note": "Lines 19-24: build Campaign models from full-reload storage and write Campaigns.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:db00928fc360af4fab88bbc1a05bc4ee686cdb210a6ee09650b2b570eb3c57b2"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraCampaignPriceHandler.cs",
+          "note": "Lines 19-24: build CampaignPrice models from full-reload storage and write CampaignPrices.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:a98f9bd91000c7f24949c36a06ebfaa24e5e5edc0a3d41a2f8f69b9d37b74b94"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraOfferPriceHandler.cs",
+          "note": "Lines 19-24: build OfferPrice models from full-reload storage and write OfferPrices.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:05a167919807d13cd7a583527f08f9296506aaad91d11d57d8bc52b0d87f2862"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListHandler.cs",
+          "note": "Lines 19-24: build PriceList models from full-reload storage and write PriceLists.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:8a14bde5c936402da9685870f3b6c84b5dd89ef36b1f5d4e039dd01f89c522e1"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListTableCampaignHandler.cs",
+          "note": "Lines 19-24: build PriceListTableCampaign models from full-reload storage and write PriceListTableCampaigns.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:9f6b742271889eb97d24b7c1f7d5c8ac434dfb2e9f642713017d497f887054ac"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListTablePriceListHandler.cs",
+          "note": "Lines 19-24: build PriceListTablePriceList models from full-reload storage and write PriceListTablePriceLists.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:180c87e768fede1ebcfa0aa86dec6dc37be63a59a15a0694bae9675ec1f69bf4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.reload.staging",
+      "label": "Staging blob container",
+      "kind": "store",
+      "responsibility": "pricedumpfromoptimerastaging.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13-41: write to pricedumpfromoptimerastaging; move = copy to pricedumpfromoptimera then delete staging.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.reload.files",
+      "label": "Optimera file container",
+      "kind": "store",
+      "responsibility": "pricedumpfromoptimera, consumed by Functions BLOB-OPTIMERA.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13-41: write to pricedumpfromoptimerastaging; move = copy to pricedumpfromoptimera then delete staging.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "b:pricedumpfromoptimera"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.reload.in",
+      "from": "comp:price.reload.input",
+      "to": "comp:price.reload.select",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Reload*",
+      "description": "One dataset per subject.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+          "note": "Lines 30-119: SNAPSHOT subjects incl. 6 Reload* commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.reload.read",
+      "from": "comp:price.reload.select",
+      "to": "comp:price.reload.storage",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Full dataset",
+      "description": "Streamed read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraCampaignHandler.cs",
+          "note": "Lines 19-24: build Campaign models from full-reload storage and write Campaigns.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:db00928fc360af4fab88bbc1a05bc4ee686cdb210a6ee09650b2b570eb3c57b2"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraCampaignPriceHandler.cs",
+          "note": "Lines 19-24: build CampaignPrice models from full-reload storage and write CampaignPrices.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:a98f9bd91000c7f24949c36a06ebfaa24e5e5edc0a3d41a2f8f69b9d37b74b94"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraOfferPriceHandler.cs",
+          "note": "Lines 19-24: build OfferPrice models from full-reload storage and write OfferPrices.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:05a167919807d13cd7a583527f08f9296506aaad91d11d57d8bc52b0d87f2862"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListHandler.cs",
+          "note": "Lines 19-24: build PriceList models from full-reload storage and write PriceLists.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:8a14bde5c936402da9685870f3b6c84b5dd89ef36b1f5d4e039dd01f89c522e1"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListTableCampaignHandler.cs",
+          "note": "Lines 19-24: build PriceListTableCampaign models from full-reload storage and write PriceListTableCampaigns.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:9f6b742271889eb97d24b7c1f7d5c8ac434dfb2e9f642713017d497f887054ac"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadOptimeraPriceListTablePriceListHandler.cs",
+          "note": "Lines 19-24: build PriceListTablePriceList models from full-reload storage and write PriceListTablePriceLists.csv.",
+          "confidence": "confirmed",
+          "revision": "sha256:180c87e768fede1ebcfa0aa86dec6dc37be63a59a15a0694bae9675ec1f69bf4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.reload.ser",
+      "from": "comp:price.reload.select",
+      "to": "comp:price.reload.csv",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Models",
+      "description": "Async stream.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadHandlerBase.cs",
+          "note": "Lines 15-58: file name {dataSource}_{file}; CSV ; delimiter, UTF-8, per-datasource class map; bad data throws; then move to destination.",
+          "confidence": "confirmed",
+          "revision": "sha256:70f8f68f2830d85c8f4f6875af0b351b3af76da65a094e2aa0542256b239065f"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.reload.stage",
+      "from": "comp:price.reload.csv",
+      "to": "comp:price.reload.staging",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "{dataSource}_{file}.csv",
+      "description": "Write.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/ReloadHandlerBase.cs",
+          "note": "Lines 15-58: file name {dataSource}_{file}; CSV ; delimiter, UTF-8, per-datasource class map; bad data throws; then move to destination.",
+          "confidence": "confirmed",
+          "revision": "sha256:70f8f68f2830d85c8f4f6875af0b351b3af76da65a094e2aa0542256b239065f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13-41: write to pricedumpfromoptimerastaging; move = copy to pricedumpfromoptimera then delete staging.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.reload.pub",
+      "from": "comp:price.reload.publish",
+      "to": "comp:price.reload.files",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Complete file",
+      "description": "Copy then delete staging.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13-41: write to pricedumpfromoptimerastaging; move = copy to pricedumpfromoptimera then delete staging.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.reload.staged",
+      "from": "comp:price.reload.staging",
+      "to": "comp:price.reload.publish",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Staged file",
+      "description": "Read for move.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/FullReload/BlobStorageClient.cs",
+          "note": "Lines 13-41: write to pricedumpfromoptimerastaging; move = copy to pricedumpfromoptimera then delete staging.",
+          "confidence": "confirmed",
+          "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

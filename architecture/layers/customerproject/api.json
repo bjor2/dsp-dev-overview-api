@@ -165,7 +165,8 @@
           "revision": "sha256:aee0f35199a16fc68fa3f58c33d7d5af4ef724d3f687f97326923aa1269d3f21"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:customerproject.api.project-write"
     },
     {
       "id": "comp:customerproject.api.manual-association",

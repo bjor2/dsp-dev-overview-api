@@ -191,6 +191,15 @@ public sealed class ArchitectureApiTests : IDisposable
         var child = Assert.Single(api.GetProperty("children").EnumerateArray());
         Assert.Equal(("layer:price.api.get-prices", "comp:price.api.price-reader"),
             (child.GetProperty("layerId").GetString(), child.GetProperty("openedByNodeId").GetString()));
+        var calcChild = Assert.Single(nested.GetProperty("children").EnumerateArray());
+        Assert.Equal(("layer:price.api.get-prices.calculator", "comp:price.get-prices.calculator"),
+            (calcChild.GetProperty("layerId").GetString(), calcChild.GetProperty("openedByNodeId").GetString()));
+        (status, var calculator, var rawCalc) = await Get(http, Layer("layer:price.api.get-prices.calculator", Price));
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal(["layer:price.api", "layer:price.api.get-prices", "layer:price.api.get-prices.calculator"], Ids(calculator.GetProperty("breadcrumbs")));
+        Assert.Equal("price.api.http", calculator.GetProperty("rootFlowRef").GetProperty("handlerId").GetString());
+        Assert.Equal(0, calculator.GetProperty("children").GetArrayLength());
+        AssertNoMachinePaths(rawCalc);
 
         (status, var batch, _) = await Get(http, Layer("layer:price.api-batch", Price));
         Assert.Equal(HttpStatusCode.OK, status);

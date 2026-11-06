@@ -1,0 +1,448 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.api.get-prices.calculator",
+  "project": "price",
+  "title": "DSP price calculator \u2014 composition stages",
+  "summary": "Drill-down of \u201cDSP price calculator\u201d: context resolution, price-list matrix, gross, discount and best-price selection roles. Composition stages, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:price.api.get-prices",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T18:10:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+      "note": "Lines 31-121: customer must exist, be allowed and match tenant; defaults for division/facility/currency/order type/warehouse; price-list table and discount model from customer; N-MONTER redirected to N-MONTERX; no items/item masters/matrix -> empty.",
+      "confidence": "confirmed",
+      "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+      "note": "Lines 196-205 and 351-397: per-tenant gross price list (Dahl prio>=9 then BDBR_9A; Optimera/Flisekompaniet/Monter prio 1; DahlFI prio 9; OptimeraSE first found); gross<=0 -> no price.",
+      "confidence": "confirmed",
+      "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+      "note": "Lines 207-299: per price list, campaign/limit prices with per-campaign discounts; line volume-discount limits; keep cheapest per quantity; best net price wins.",
+      "confidence": "confirmed",
+      "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+      "note": "Lines 7-160: sequential discount positions; stop flag; better-than-previous replacement; DIRE relations; order-total and internal discounts skipped; agreement discount not included (TODO).",
+      "confidence": "confirmed",
+      "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/docs/PriceCalculator.md",
+      "note": "Repo design doc for the price calculator; may lag code.",
+      "confidence": "confirmed",
+      "revision": "sha256:3c73650a59b0b8bffd46e133c387cc61d59d73b54a5f62bd91479fdac040dbee"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22777574",
+      "revision": "version:6",
+      "confidence": "confirmed",
+      "note": "Product/design intent: DSP Price subscribes to M3 key tables and provides price simulation outside M3 (avoids OIS320MI cost/limits); for ecommerce + customer price list tools. Campaign special case CMNO\u2192CSYTAB. Not deployment proof."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774388",
+      "revision": "version:2",
+      "confidence": "confirmed",
+      "note": "Historical 2021 API/APIM naming context. Uncertain for current env names; not proof of current get-prices topology."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774078",
+      "revision": "version:4",
+      "confidence": "confirmed",
+      "note": "Documents consumer/MDM unit multiplicationFactor semantics (inverted under Price unit for Flisekompaniet/Optimera) and known Pricer Plaza/returns issues; DSP assumes SalesPriceUnit=NOBBPriceUnit. NOT evidence of in-process PriceCalculator topology or internals."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256.",
+    "docs/PriceCalculator.md may lag code; code is authoritative.",
+    "Confluence 22777574 v6 (simulate prices outside M3) is product intent; parity with M3 OIS320MI not verified.",
+    "Unit-conversion and future-price-override resolvers are not drilled further.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.calc.input",
+      "label": "Price request (from DSP retriever)",
+      "kind": "external",
+      "responsibility": "Boundary: tenant + Input (customer, items, optional overrides).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 31-121: customer must exist, be allowed and match tenant; defaults for division/facility/currency/order type/warehouse; price-list table and discount model from customer; N-MONTER redirected to N-MONTERX; no items/item masters/matrix -> empty.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc.context",
+      "label": "Context resolution",
+      "kind": "component",
+      "responsibility": "Gate + defaults: customer must be allowed and match tenant; fills division/facility/currency/order type/warehouse defaults; price-list table and discount model come from the customer. N-MONTER is redirected to N-MONTERX (VAT workaround). Missing items/item masters/control matrix -> no prices.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 31-121: customer must exist, be allowed and match tenant; defaults for division/facility/currency/order type/warehouse; price-list table and discount model from customer; N-MONTER redirected to N-MONTERX; no items/item masters/matrix -> empty.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": [
+        "Agreement selection and address validation are TODO in code (lines 52-57); agreements do not affect price-list choice today."
+      ]
+    },
+    {
+      "id": "comp:price.calc.matrix",
+      "label": "Price-list matrix role",
+      "kind": "component",
+      "responsibility": "Control matrix (OIS831) defines, per priority position, which field set selects a price list. Table resolution tries a direct match, then customer chain levels (most specific first) with wildcards, keeping the best match per position and the latest price per limit/campaign.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListMatrixResolver.cs",
+          "note": "Lines 15-30: OIS831 control matrix by price-list table.",
+          "confidence": "confirmed",
+          "revision": "sha256:a02d22708c3a0fd382ca1cdfe1f4ab46305957f05580bee30f2db8121dbce03a"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 17-125: per priority: direct match first, then chain levels 9->down with wildcard; first best QueryOrder; latest ValidFrom per limit/campaign.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc.gross",
+      "label": "Gross price role",
+      "kind": "component",
+      "responsibility": "Tenant-specific rule picks which resolved list counts as gross (Dahl prio>=9 then named BDBR_9A; Optimera/Flisekompaniet/Monter prio 1; DahlFI prio 9; OptimeraSE first found). No/zero gross -> no price.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 196-205 and 351-397: per-tenant gross price list (Dahl prio>=9 then BDBR_9A; Optimera/Flisekompaniet/Monter prio 1; DahlFI prio 9; OptimeraSE first found); gross<=0 -> no price.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": [
+        "OptimeraSE/Dahl gross rules are explicitly band-aid in code comments."
+      ]
+    },
+    {
+      "id": "comp:price.calc.discount",
+      "label": "Discount role",
+      "kind": "component",
+      "responsibility": "Discount numbers (model + currency) select discount values via chain/priority, exact matches only; positions apply sequentially with stop/replace relations. NetPriceUsed prices skip discounts. Agreement discounts not included.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountNumbersResolver.cs",
+          "note": "Lines 15-30: discount numbers from discount model + currency.",
+          "confidence": "confirmed",
+          "revision": "sha256:4915491c92938e76df902c30e0aafca295ca7b42b869cdac4d16647727b77727"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+          "note": "Lines 17-120: discounts by model date, priority and chain resolution; exact matches only (no wildcards, line 98).",
+          "confidence": "confirmed",
+          "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 7-160: sequential discount positions; stop flag; better-than-previous replacement; DIRE relations; order-total and internal discounts skipped; agreement discount not included (TODO).",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc.select",
+      "label": "Best-price selection",
+      "kind": "component",
+      "responsibility": "Across price lists: computes campaign/limit and volume-limit prices (cheapest per required quantity kept) and selects the lowest net price as the regular price; adds order-total discount (limit<=1).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 207-299: per price list, campaign/limit prices with per-campaign discounts; line volume-discount limits; keep cheapest per quantity; best net price wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 301-320 and 334-348: NetPriceUsed skips discounts; order-total discount (limit<=1); result with campaign/limit prices and future overrides used.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc.direct",
+      "label": "Direct-delivery variant",
+      "kind": "component",
+      "responsibility": "Optional second pass with direct-delivery line/order type for non-Dahl tenants when requested and permitted and the item is a direct-delivery product.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 155-186: direct-delivery price recalculated with direct-delivery line/order type when tenant != Dahl, requested and customer allowed, and item is direct-delivery.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc.refdata",
+      "label": "Price DB reference data",
+      "kind": "store",
+      "responsibility": "Customers, item masters, control matrices, price lists, discounts (written by PICO import / Optimera paths).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListMatrixResolver.cs",
+          "note": "Lines 15-30: OIS831 control matrix by price-list table.",
+          "confidence": "confirmed",
+          "revision": "sha256:a02d22708c3a0fd382ca1cdfe1f4ab46305957f05580bee30f2db8121dbce03a"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 17-125: per priority: direct match first, then chain levels 9->down with wildcard; first best QueryOrder; latest ValidFrom per limit/campaign.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+          "note": "Lines 17-120: discounts by model date, priority and chain resolution; exact matches only (no wildcards, line 98).",
+          "confidence": "confirmed",
+          "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+        }
+      ],
+      "uncertainties": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.calc.in",
+      "from": "comp:price.calc.input",
+      "to": "comp:price.calc.context",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CalculatePrices",
+      "description": "Request.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 31-121: customer must exist, be allowed and match tenant; defaults for division/facility/currency/order type/warehouse; price-list table and discount model from customer; N-MONTER redirected to N-MONTERX; no items/item masters/matrix -> empty.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc.ctx-matrix",
+      "from": "comp:price.calc.context",
+      "to": "comp:price.calc.matrix",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Price-list table",
+      "description": "From customer/defaults.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 31-121: customer must exist, be allowed and match tenant; defaults for division/facility/currency/order type/warehouse; price-list table and discount model from customer; N-MONTER redirected to N-MONTERX; no items/item masters/matrix -> empty.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc.ctx-disc",
+      "from": "comp:price.calc.context",
+      "to": "comp:price.calc.discount",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Discount model + currency",
+      "description": "From customer/defaults.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 31-121: customer must exist, be allowed and match tenant; defaults for division/facility/currency/order type/warehouse; price-list table and discount model from customer; N-MONTER redirected to N-MONTERX; no items/item masters/matrix -> empty.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc.matrix-gross",
+      "from": "comp:price.calc.matrix",
+      "to": "comp:price.calc.gross",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Resolved price lists",
+      "description": "Per priority.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 196-205 and 351-397: per-tenant gross price list (Dahl prio>=9 then BDBR_9A; Optimera/Flisekompaniet/Monter prio 1; DahlFI prio 9; OptimeraSE first found); gross<=0 -> no price.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc.gross-select",
+      "from": "comp:price.calc.gross",
+      "to": "comp:price.calc.select",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Gross price",
+      "description": "Reference for discount %.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 207-299: per price list, campaign/limit prices with per-campaign discounts; line volume-discount limits; keep cheapest per quantity; best net price wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc.disc-select",
+      "from": "comp:price.calc.discount",
+      "to": "comp:price.calc.select",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Applicable discounts",
+      "description": "Per item / campaign.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 207-299: per price list, campaign/limit prices with per-campaign discounts; line volume-discount limits; keep cheapest per quantity; best net price wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc.select-direct",
+      "from": "comp:price.calc.select",
+      "to": "comp:price.calc.direct",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Same pipeline",
+      "description": "Re-run with direct-delivery inputs.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 155-186: direct-delivery price recalculated with direct-delivery line/order type when tenant != Dahl, requested and customer allowed, and item is direct-delivery.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc.matrix-db",
+      "from": "comp:price.calc.matrix",
+      "to": "comp:price.calc.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Matrix + lists",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListMatrixResolver.cs",
+          "note": "Lines 15-30: OIS831 control matrix by price-list table.",
+          "confidence": "confirmed",
+          "revision": "sha256:a02d22708c3a0fd382ca1cdfe1f4ab46305957f05580bee30f2db8121dbce03a"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 17-125: per priority: direct match first, then chain levels 9->down with wildcard; first best QueryOrder; latest ValidFrom per limit/campaign.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc.disc-db",
+      "from": "comp:price.calc.discount",
+      "to": "comp:price.calc.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Discount data",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountNumbersResolver.cs",
+          "note": "Lines 15-30: discount numbers from discount model + currency.",
+          "confidence": "confirmed",
+          "revision": "sha256:4915491c92938e76df902c30e0aafca295ca7b42b869cdac4d16647727b77727"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+          "note": "Lines 17-120: discounts by model date, priority and chain resolution; exact matches only (no wildcards, line 98).",
+          "confidence": "confirmed",
+          "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

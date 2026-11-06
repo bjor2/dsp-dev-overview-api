@@ -131,7 +131,8 @@
           "revision": "sha256:2e00d40d4fbe6ce1c04cfc4f92477ae63d4701c33fbf5cc2359023203418eafa"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:price.fn.commands.work"
     },
     {
       "id": "comp:price.func.price-db",

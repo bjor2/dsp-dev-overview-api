@@ -1,0 +1,245 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.fn.commands.address-upsert",
+  "project": "customerproject",
+  "title": "COMMANDS \u2014 customer address upsert decisions",
+  "summary": "Drill-down of \u201cCustomer address upsert\u201d: validation, the create/update/no-op decision, and how ERP address ids are allocated. Conceptual responsibilities, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:customerproject.fn.commands",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T17:45:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+      "note": "Lines 81-90: UpsertCustomerAddress subject mapped to UpsertCustomerAddressCommand.",
+      "confidence": "confirmed",
+      "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+      "note": "Lines 28-63 decisions; 65-77 change detection (10 fields); 79-128 validation (tenants Optimera/OptimeraSE/DahlFI, M3Cloud/Two, required fields).",
+      "confidence": "confirmed",
+      "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/ErpAddress/ErpAddressService.cs",
+      "note": "Lines 20-56 create with up to 10 candidate ids, AddressAlreadyExists -> next candidate, other error -> stop/throw; 58-67 update falls back to create.",
+      "confidence": "confirmed",
+      "revision": "sha256:edbd5e6e72746764f41517746fba551c8fc2ec5ece9fa855b94dbec422ff18f1"
+    }
+  ],
+  "uncertainties": [
+    "No CustomerProjectChanged is published here; downstream project effects arrive via Ingress snapshots -> DOMAIN (inferred from reviewed handlers, not traced end-to-end).",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.au.input",
+      "label": "COMMANDS queue (UpsertCustomerAddress)",
+      "kind": "external",
+      "responsibility": "Boundary input.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 81-90: UpsertCustomerAddress subject mapped to UpsertCustomerAddressCommand.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:customerproject"
+    },
+    {
+      "id": "comp:customerproject.au.validate",
+      "label": "Validation gate",
+      "kind": "component",
+      "responsibility": "Rejects unsupported tenant (only Optimera, OptimeraSE, DahlFI), non-M3Cloud/Two data source, or missing CustomerId/Address1/Zip/City/Country. Defaults ValidFrom to now.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+          "note": "Lines 28-63 decisions; 65-77 change detection (10 fields); 79-128 validation (tenants Optimera/OptimeraSE/DahlFI, M3Cloud/Two, required fields).",
+          "confidence": "confirmed",
+          "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+        }
+      ],
+      "uncertainties": [
+        "Tenant rule differs from API project write (IsCustomerAddressProjectsEnabled); not reconciled."
+      ]
+    },
+    {
+      "id": "comp:customerproject.au.decide",
+      "label": "Create / update / no-op decision",
+      "kind": "component",
+      "responsibility": "No ERP address id or unknown locally -> create in ERP; known and unchanged (10-field compare) -> no-op with warning; changed -> update in ERP. Local store written only after ERP succeeds.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+          "note": "Lines 28-63 decisions; 65-77 change detection (10 fields); 79-128 validation (tenants Optimera/OptimeraSE/DahlFI, M3Cloud/Two, required fields).",
+          "confidence": "confirmed",
+          "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.au.erp-id",
+      "label": "ERP address-id allocation",
+      "kind": "component",
+      "responsibility": "Computes up to 10 candidate address ids (internal storage) and tries them in order; \"already exists\" advances, other errors abort. Update that fails falls back to create.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/ErpAddress/ErpAddressService.cs",
+          "note": "Lines 20-56 create with up to 10 candidate ids, AddressAlreadyExists -> next candidate, other error -> stop/throw; 58-67 update falls back to create.",
+          "confidence": "confirmed",
+          "revision": "sha256:edbd5e6e72746764f41517746fba551c8fc2ec5ece9fa855b94dbec422ff18f1"
+        }
+      ],
+      "uncertainties": [
+        "Candidate-id algorithm (CalculateAddressIds) not drilled further."
+      ]
+    },
+    {
+      "id": "comp:customerproject.au.erp",
+      "label": "ERP customer-address API",
+      "kind": "external",
+      "responsibility": "M3 address create/update.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/ErpAddress/ErpAddressService.cs",
+          "note": "Lines 20-56 create with up to 10 candidate ids, AddressAlreadyExists -> next candidate, other error -> stop/throw; 58-67 update falls back to create.",
+          "confidence": "confirmed",
+          "revision": "sha256:edbd5e6e72746764f41517746fba551c8fc2ec5ece9fa855b94dbec422ff18f1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.au.storage",
+      "label": "CustomerProject SQL",
+      "kind": "store",
+      "responsibility": "Local CustomerAddress upsert.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+          "note": "Lines 28-63 decisions; 65-77 change detection (10 fields); 79-128 validation (tenants Optimera/OptimeraSE/DahlFI, M3Cloud/Two, required fields).",
+          "confidence": "confirmed",
+          "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+        }
+      ],
+      "uncertainties": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.au.in",
+      "from": "comp:customerproject.au.input",
+      "to": "comp:customerproject.au.validate",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "UpsertCustomerAddress",
+      "description": "Address command.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 81-90: UpsertCustomerAddress subject mapped to UpsertCustomerAddressCommand.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.au.valid",
+      "from": "comp:customerproject.au.validate",
+      "to": "comp:customerproject.au.decide",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Validated address",
+      "description": "Passes to decision.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+          "note": "Lines 28-63 decisions; 65-77 change detection (10 fields); 79-128 validation (tenants Optimera/OptimeraSE/DahlFI, M3Cloud/Two, required fields).",
+          "confidence": "confirmed",
+          "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.au.alloc",
+      "from": "comp:customerproject.au.decide",
+      "to": "comp:customerproject.au.erp-id",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Create/update",
+      "description": "When changed or new.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+          "note": "Lines 28-63 decisions; 65-77 change detection (10 fields); 79-128 validation (tenants Optimera/OptimeraSE/DahlFI, M3Cloud/Two, required fields).",
+          "confidence": "confirmed",
+          "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.au.erp",
+      "from": "comp:customerproject.au.erp-id",
+      "to": "comp:customerproject.au.erp",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Create / Update",
+      "description": "Candidate attempts.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/ErpAddress/ErpAddressService.cs",
+          "note": "Lines 20-56 create with up to 10 candidate ids, AddressAlreadyExists -> next candidate, other error -> stop/throw; 58-67 update falls back to create.",
+          "confidence": "confirmed",
+          "revision": "sha256:edbd5e6e72746764f41517746fba551c8fc2ec5ece9fa855b94dbec422ff18f1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.au.store",
+      "from": "comp:customerproject.au.decide",
+      "to": "comp:customerproject.au.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "CustomerAddress",
+      "description": "After ERP success.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+          "note": "Lines 28-63 decisions; 65-77 change detection (10 fields); 79-128 validation (tenants Optimera/OptimeraSE/DahlFI, M3Cloud/Two, required fields).",
+          "confidence": "confirmed",
+          "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

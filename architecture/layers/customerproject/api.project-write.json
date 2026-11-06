@@ -1,0 +1,344 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.api.project-write",
+  "project": "customerproject",
+  "title": "API \u2014 project create/update decisions",
+  "summary": "Drill-down of \u201cProject create/update service\u201d: validation, date normalisation, ERP address sync and post-save effects. Conceptual responsibilities, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:customerproject.api",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T17:45:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+      "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+      "confidence": "confirmed",
+      "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Configuration/ServiceCollectionExtensions.cs",
+      "note": "Lines 17-49: CustomerProjectService registered for API only.",
+      "confidence": "confirmed",
+      "revision": "sha256:aee0f35199a16fc68fa3f58c33d7d5af4ef724d3f687f97326923aa1269d3f21"
+    }
+  ],
+  "uncertainties": [
+    "API path writes ERP first then SQL; no cross-system transaction evidenced.",
+    "Same 10-field address compare exists in Functions address upsert; duplication noted, not reconciled.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.pw.input",
+      "label": "Project controller",
+      "kind": "external",
+      "responsibility": "Boundary: create/update requests from the project controller (parent layer).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Configuration/ServiceCollectionExtensions.cs",
+          "note": "Lines 17-49: CustomerProjectService registered for API only.",
+          "confidence": "confirmed",
+          "revision": "sha256:aee0f35199a16fc68fa3f58c33d7d5af4ef724d3f687f97326923aa1269d3f21"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.pw.validate",
+      "label": "Validation gate",
+      "kind": "component",
+      "responsibility": "Tenant must have customer-address projects enabled; M3Cloud/Two data source; CustomerId required; address fields required when an address is supplied. Create rejects id>0; update requires id and same customer.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.pw.dates",
+      "label": "Date normalisation",
+      "kind": "component",
+      "responsibility": "Create: start defaults to now, end to now+1 year, capped at 2039-12-31; address validity mirrors project dates. Update: end falls back to address ValidTo then project EndDate; keeps existing ErpAddressId and ValidFrom.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.pw.erp-sync",
+      "label": "ERP address sync",
+      "kind": "component",
+      "responsibility": "Create: always creates the ERP address (failure -> fail result). Update: only when the 10-field address compare shows a change; ERP update failure aborts.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.pw.effects",
+      "label": "Post-save effects",
+      "kind": "component",
+      "responsibility": "Publishes CustomerProjectChanged after any successful save; on inactive->active update requests PopulateOrderReferences.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.pw.erp",
+      "label": "ERP customer-address API",
+      "kind": "external",
+      "responsibility": "M3 address create/update.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.pw.storage",
+      "label": "CustomerProject SQL",
+      "kind": "store",
+      "responsibility": "Project upsert.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.pw.topic",
+      "label": "customerproject topic",
+      "kind": "external",
+      "responsibility": "CustomerProjectChanged.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "t:customerproject-topic"
+    },
+    {
+      "id": "comp:customerproject.pw.commands",
+      "label": "COMMANDS queue",
+      "kind": "external",
+      "responsibility": "PopulateOrderReferences.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:customerproject"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.pw.in",
+      "from": "comp:customerproject.pw.input",
+      "to": "comp:customerproject.pw.validate",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Create / Update",
+      "description": "HTTP request mapped to project.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pw.norm",
+      "from": "comp:customerproject.pw.validate",
+      "to": "comp:customerproject.pw.dates",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Valid project",
+      "description": "Responsibility hand-off.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pw.sync",
+      "from": "comp:customerproject.pw.dates",
+      "to": "comp:customerproject.pw.erp-sync",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Normalised address",
+      "description": "Responsibility hand-off.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pw.erp",
+      "from": "comp:customerproject.pw.erp-sync",
+      "to": "comp:customerproject.pw.erp",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Create / Update address",
+      "description": "Responsibility hand-off.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pw.save",
+      "from": "comp:customerproject.pw.erp-sync",
+      "to": "comp:customerproject.pw.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Project",
+      "description": "Upsert after ERP.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pw.notify",
+      "from": "comp:customerproject.pw.effects",
+      "to": "comp:customerproject.pw.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CustomerProjectChanged",
+      "description": "Responsibility hand-off.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pw.activate",
+      "from": "comp:customerproject.pw.effects",
+      "to": "comp:customerproject.pw.commands",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "PopulateOrderReferences",
+      "description": "Only on activation.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.pw.saved",
+      "from": "comp:customerproject.pw.storage",
+      "to": "comp:customerproject.pw.effects",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Saved project",
+      "description": "Drives effects.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerProjectService.cs",
+          "note": "Lines 37-88 create/update; 90-144 date+address transforms; 151-197 validation; 199-217 change detection; 230-249 date defaults (end now+1y, cap 2039-12-31).",
+          "confidence": "confirmed",
+          "revision": "sha256:082cb0c8da75d7b65ccaa519b3dad311ab89ced2213bb5f53d88ffea59146a2e"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

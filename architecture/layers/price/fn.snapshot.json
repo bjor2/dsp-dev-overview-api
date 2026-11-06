@@ -162,7 +162,8 @@
           "revision": "sha256:89e95ffe071c857a20df13d25eb94da968f5167f16916ef39af840d61e0d02cf"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:price.fn.snapshot.full-reload"
     },
     {
       "id": "comp:price.snapshot.storage",

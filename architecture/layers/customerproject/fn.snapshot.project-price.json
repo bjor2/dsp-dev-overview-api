@@ -1,0 +1,294 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.fn.snapshot.project-price",
+  "project": "customerproject",
+  "title": "SNAPSHOT \u2014 project-price snapshot composition",
+  "summary": "Drill-down of \u201cProject-price snapshot composition\u201d: how three ERP sources are matched and aggregated into project-price presence. Conceptual responsibilities, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:customerproject.fn.snapshot",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T17:45:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+      "note": "Lines 45-89: snapshot trigger, address and project-price command families.",
+      "confidence": "confirmed",
+      "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+      "note": "Lines 139-182: three key sources map to CustomerOrderNumber (CustomerAgreementHeads.Description, HeaderFiles, QuotationOrderHeads).",
+      "confidence": "confirmed",
+      "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+      "note": "Lines 184-231: CAH x QOH (reason 002/300) x HF (type 010/012); group per customer+address; ValidFrom=MIN(start); ValidTo=MAX(earlier of CAH/QOH ValidTo); IsDeleted=MIN(row inactive) i.e. deleted only if every row is non-20/deleted.",
+      "confidence": "confirmed",
+      "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnCustomerAgreementHeadChangedHandler.cs",
+      "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+      "confidence": "confirmed",
+      "revision": "sha256:39ee4a09caddf19a5928ce4446618380e9f816be23bf1a6ca16abf5ec1eabdf9"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnHeaderFileChangedHandler.cs",
+      "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+      "confidence": "confirmed",
+      "revision": "sha256:25646cbae890fb49b9d6249d4c54b9e50719e9a98a78523efcef8970e9c44978"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnQuotationOrderHeadChangedHandler.cs",
+      "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+      "confidence": "confirmed",
+      "revision": "sha256:73ec062bb86011613f349cacb212b84c8aba4fe5defb0ed0b5c015b6f40bd08f"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779013",
+      "revision": "version:6",
+      "confidence": "confirmed",
+      "note": "Opened full markdown. Historical upstream ADF/M3 address and HasProjectPrice analysis, NOT an in-process component or evidence ADF executes here."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774292",
+      "revision": "version:13",
+      "confidence": "confirmed",
+      "note": "Opened full markdown. 2024 conversion design: PICo/Table Event streams for CustomerAddress and ProjectWithPrice; design intent, not deployment proof."
+    }
+  ],
+  "uncertainties": [
+    "ADF/HasProjectPrice (Confluence 22779013 v6) is historical analysis; design (22774292 v13) != deployment proof.",
+    "DOMAIN saves ProjectWithPrice without publishing CustomerProjectChanged (see layer:customerproject.func-app.domain-update).",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.sp.input",
+      "label": "SNAPSHOT queue (project-price subjects)",
+      "kind": "external",
+      "responsibility": "CustomerAgreementHead, HeaderFile, QuotationOrderHead changed requests.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45-89: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:customerproject-snapshot"
+    },
+    {
+      "id": "comp:customerproject.sp.keys",
+      "label": "Change -> customer order number",
+      "kind": "component",
+      "responsibility": "Each of the three sources resolves to the shared CustomerOrderNumber that links agreement, quotation and header file.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 139-182: three key sources map to CustomerOrderNumber (CustomerAgreementHeads.Description, HeaderFiles, QuotationOrderHeads).",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnCustomerAgreementHeadChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:39ee4a09caddf19a5928ce4446618380e9f816be23bf1a6ca16abf5ec1eabdf9"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnHeaderFileChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:25646cbae890fb49b9d6249d4c54b9e50719e9a98a78523efcef8970e9c44978"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnQuotationOrderHeadChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:73ec062bb86011613f349cacb212b84c8aba4fe5defb0ed0b5c015b6f40bd08f"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.sp.compose",
+      "label": "Project-price presence composition",
+      "kind": "component",
+      "responsibility": "Requires all three sources to match (quotation reason 002/300, order type 010/012); aggregates per customer+delivery address into a validity window; marks deleted only when every contributing row is inactive (status<>20 or deleted). Price presence/dates only, no prices.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 184-231: CAH x QOH (reason 002/300) x HF (type 010/012); group per customer+address; ValidFrom=MIN(start); ValidTo=MAX(earlier of CAH/QOH ValidTo); IsDeleted=MIN(row inactive) i.e. deleted only if every row is non-20/deleted.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": [
+        "Differs from Confluence 22779013 historical HasProjectPrice SQL (validity/deletion treatment); current code describes this node; parity unverified (conflict preserved).",
+        "Not the dsp-price service."
+      ]
+    },
+    {
+      "id": "comp:customerproject.sp.store",
+      "label": "Ingress SQL (persisted models)",
+      "kind": "store",
+      "responsibility": "ingress.CustomerAgreementHeads / QuotationOrderHeads / HeaderFiles.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 184-231: CAH x QOH (reason 002/300) x HF (type 010/012); group per customer+address; ValidFrom=MIN(start); ValidTo=MAX(earlier of CAH/QOH ValidTo); IsDeleted=MIN(row inactive) i.e. deleted only if every row is non-20/deleted.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.sp.out",
+      "label": "DOMAIN queue",
+      "kind": "external",
+      "responsibility": "UpdateProjectWithPriceFromSnapshot batch.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnCustomerAgreementHeadChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:39ee4a09caddf19a5928ce4446618380e9f816be23bf1a6ca16abf5ec1eabdf9"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnHeaderFileChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:25646cbae890fb49b9d6249d4c54b9e50719e9a98a78523efcef8970e9c44978"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnQuotationOrderHeadChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:73ec062bb86011613f349cacb212b84c8aba4fe5defb0ed0b5c015b6f40bd08f"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:customerproject-domain"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.sp.in",
+      "from": "comp:customerproject.sp.input",
+      "to": "comp:customerproject.sp.keys",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Price-source change subjects",
+      "description": "Request.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45-89: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.sp.read",
+      "from": "comp:customerproject.sp.keys",
+      "to": "comp:customerproject.sp.store",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Order-number lookup",
+      "description": "Changed row -> order number.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 139-182: three key sources map to CustomerOrderNumber (CustomerAgreementHeads.Description, HeaderFiles, QuotationOrderHeads).",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.sp.join",
+      "from": "comp:customerproject.sp.store",
+      "to": "comp:customerproject.sp.compose",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Matched rows",
+      "description": "Agreement + quotation + header file.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 184-231: CAH x QOH (reason 002/300) x HF (type 010/012); group per customer+address; ValidFrom=MIN(start); ValidTo=MAX(earlier of CAH/QOH ValidTo); IsDeleted=MIN(row inactive) i.e. deleted only if every row is non-20/deleted.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.sp.send",
+      "from": "comp:customerproject.sp.compose",
+      "to": "comp:customerproject.sp.out",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "UpdateProjectWithPriceFromSnapshot",
+      "description": "Batch.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnCustomerAgreementHeadChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:39ee4a09caddf19a5928ce4446618380e9f816be23bf1a6ca16abf5ec1eabdf9"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnHeaderFileChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:25646cbae890fb49b9d6249d4c54b9e50719e9a98a78523efcef8970e9c44978"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateProjectWithPriceSnapshotOnQuotationOrderHeadChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateProjectWithPriceFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:73ec062bb86011613f349cacb212b84c8aba4fe5defb0ed0b5c015b6f40bd08f"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}
