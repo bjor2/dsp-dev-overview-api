@@ -1,0 +1,173 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.fn.domain-ingress",
+  "project": "price",
+  "title": "DOMAIN-INGRESS \u2014 PICO direct M3 calculation-data import",
+  "summary": "Explore of the PICO direct (domain-ingress) handler inside the price Functions container: ~23 M3 *Changed contracts arriving on q:price-domain-ingress are imported as price-calculation data into the price database. Which ingress path is live (ADF CSV vs ASB/PICO) is an unresolved documented conflict.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:price.func-app",
+    "handlerId": "price.fn.domain-ingress"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T16:04:10+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/price.dev.json",
+      "note": "price.fn.domain-ingress handler (q:price-domain-ingress) in container func-app; injected by ext:m3-pico.",
+      "confidence": "confirmed",
+      "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceDomainIngressQueueHandler.cs",
+      "note": "Lines 63\u2013228: DOMAIN (PICO direct) subjects: ~23 M3 *Changed contracts.",
+      "confidence": "confirmed",
+      "revision": "sha256:b1bcba5af7ef280e21fc44f4397508e09981bc0e88de8ddc130c853534e7cb2d"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22777574",
+      "revision": "version:6",
+      "confidence": "confirmed",
+      "note": "Product/design intent: DSP Price subscribes to M3 key tables and provides price simulation outside M3 (avoids OIS320MI cost/limits); for ecommerce + customer price list tools. Campaign special case CMNO\u2192CSYTAB. Not deployment proof."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22773861",
+      "revision": "version:67",
+      "confidence": "confirmed",
+      "note": "Design intent: replace ADF CSV ingress with PICO/Table Event streams (OnPrem M3 then M3 Cloud); Ingress SQL on same instance as domain; minimal ingress storage. Not deployment proof."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774388",
+      "revision": "version:2",
+      "confidence": "confirmed",
+      "note": "Historical 2021 overview: ADF nightly CSV dump \u2192 blob trigger \u2192 Function \u2192 SQL; Web API via APIM/Okta; names web-870-*/func-870-*/sql; ASB messages n/a. Design intent / historical ops \u2014 not proof of current topology."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256 (Team Lead ruled HEAD check unnecessary).",
+    "Per-handler internals of ~23 PICO and 14 command subjects are grouped, not enumerated.",
+    "Write-side storage type/topology beyond EF registration is not asserted.",
+    "Unresolved conflict: Confluence 22774388 v2 describes ADF nightly CSV ingress and ASB messages as n/a, while registration + PICO design (22773861 v67) and current handlers imply ASB queues/PICO \u2014 which path is live is unresolved; do not invent.",
+    "Re-cut from retired root layer:price.func-app (ADDENDA-011.1 per-handler roots); old layer id is ignored for dsp-arch-pos and not recycled. New split layers start auto-layout.",
+    "Responsibilities of sibling handlers in the same container are shown only as boundary queue/store nodes; no cross-root edges are drawn."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.func.pico-input",
+      "label": "PICO direct queue",
+      "kind": "external",
+      "responsibility": "Boundary input of ~23 M3 *Changed contracts that bypass ingress/snapshot.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceDomainIngressQueueHandler.cs",
+          "note": "Lines 63\u2013228: DOMAIN (PICO direct) subjects: ~23 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1bcba5af7ef280e21fc44f4397508e09981bc0e88de8ddc130c853534e7cb2d"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "q:price-domain-ingress; registration notes PICO inject bypasses ingress/snapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [
+        "Upstream sender is outside both repos (registration inject ext:m3-pico)."
+      ],
+      "owner": "price",
+      "flowEntityId": "q:price-domain-ingress"
+    },
+    {
+      "id": "comp:price.func.pico-import",
+      "label": "M3 calculation-data import",
+      "kind": "component",
+      "responsibility": "Persists M3 reference data used by DSP price calculation (item master, matrices, agreements, discounts, currency, VAT, etc.) via storable-entity storage.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceDomainIngressQueueHandler.cs",
+          "note": "Lines 63\u2013228: DOMAIN (PICO direct) subjects: ~23 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1bcba5af7ef280e21fc44f4397508e09981bc0e88de8ddc130c853534e7cb2d"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/ItemMasterChangedHandler.cs",
+          "note": "Lines 16\u201320: PICO handlers derive from ImportStorableEntityFromChangeEventBase with storable-entity storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:edf38c5139d7cf9f3e83bd106da5448e6b3404f4d185b1717ae9a2a982e53803"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.pico.price-db",
+      "label": "Price SQL storage",
+      "kind": "store",
+      "responsibility": "Write-side price database (prices, campaigns, calculation reference data). DOMAIN-INGRESS writes imported M3 calculation data here.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Storage.Write/PriceStorageDbContext.cs",
+          "note": "Write-side price SQL EF DbContext; no values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:df11a327132a271f1c4dec8c2ba44cc97c231b5c3fcdc44e026c71c84a3b1b81"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.func.pico-in",
+      "from": "comp:price.func.pico-input",
+      "to": "comp:price.func.pico-import",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "M3 *Changed",
+      "description": "PICO change events.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceDomainIngressQueueHandler.cs",
+          "note": "Lines 63\u2013228: DOMAIN (PICO direct) subjects: ~23 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1bcba5af7ef280e21fc44f4397508e09981bc0e88de8ddc130c853534e7cb2d"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.func.pico-db",
+      "from": "comp:price.func.pico-import",
+      "to": "comp:price.pico.price-db",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Calculation reference data",
+      "description": "Storable entities.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/ItemMasterChangedHandler.cs",
+          "note": "Lines 16\u201320: PICO handlers derive from ImportStorableEntityFromChangeEventBase with storable-entity storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:edf38c5139d7cf9f3e83bd106da5448e6b3404f4d185b1717ae9a2a982e53803"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

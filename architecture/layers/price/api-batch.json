@@ -8,10 +8,11 @@
   "summary": "Thin layer: batch controllers delegate to the shared price reader batch paths. Kept deliberately coarse; see uncertainties.",
   "parentLayerId": null,
   "flowRef": {
-    "containerId": "container:price.api-batch"
+    "containerId": "container:price.api-batch",
+    "handlerId": "price.api-batch.http"
   },
   "scope": "both",
-  "reviewedAt": "2026-11-06T11:30:00+01:00",
+  "reviewedAt": "2026-11-06T16:04:10+01:00",
   "sources": [
     {
       "kind": "registration",

@@ -4,7 +4,7 @@ using Dsp.DevOverview.Api.Registration;
 namespace Dsp.DevOverview.Api.Architecture;
 
 /// <summary>
-/// ADDENDA-011 §6 cross-document rules that JSON Schema cannot express. Every issue is collected (not first-fail) so one load
+/// ADDENDA-011 §6 cross-document rules (plus ADDENDA-011.1 V-011 handler roots) that JSON Schema cannot express. Every issue is collected (not first-fail) so one load
 /// reports everything; any issue rejects the whole catalog. <paramref name="layers"/> is aligned with catalog.layers.
 /// </summary>
 public static partial class ArchitectureValidator
@@ -93,27 +93,35 @@ public static partial class ArchitectureValidator
             }
         }
 
-        // V-006 Flow binding of roots.
+        // V-006 root container binding; V-011 (ADDENDA-011.1) every root binds exactly one Flow handler item in that container.
+        // No legacy container-only mode: a root without handlerId rejects the catalog. Registration containers/handlers carry no
+        // explicit opensLayerId yet (registration schema rejects it), so the V-011 explicit-vs-sidecar agreement check has no input.
         var containers = registration.Containers.ToDictionary(c => c.Id, StringComparer.Ordinal);
         var handlers = registration.Handlers.ToDictionary(h => h.Id, StringComparer.Ordinal);
-        var rootSources = new HashSet<(string, string?)>();
+        var rootsByHandler = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var root in byId.Values.Where(l => l.ParentLayerId is null))
         {
             if (root.FlowRef is not { } flow) { issues.Add($"V-006: root {root.Id} has no flowRef"); continue; }
-            if (!containers.TryGetValue(flow.ContainerId, out var container)) { issues.Add($"V-006: root {root.Id} container {flow.ContainerId} is not in the registration"); continue; }
-            var sourceScope = container.Scope ?? "both";
-            if (flow.HandlerId is { } handlerId)
+            if (string.IsNullOrWhiteSpace(flow.HandlerId))
+                issues.Add($"V-011: root {root.Id} has no flowRef.handlerId (container-only roots are not Explore targets)");
+            else
             {
-                if (!handlers.TryGetValue(handlerId, out var handler) || handler.ContainerId != flow.ContainerId)
-                {
-                    issues.Add($"V-006: root {root.Id} handler {handlerId} is not in container {flow.ContainerId}");
-                    continue;
-                }
-                sourceScope = handler.Scope ?? sourceScope;
+                if (!rootsByHandler.TryGetValue(flow.HandlerId, out var claims)) rootsByHandler[flow.HandlerId] = claims = [];
+                claims.Add(root.Id);
             }
-            if (!rootSources.Add((flow.ContainerId, flow.HandlerId))) issues.Add($"V-006: more than one root for Flow source {flow.HandlerId ?? flow.ContainerId}");
+            if (!containers.TryGetValue(flow.ContainerId, out var container)) { issues.Add($"V-006: root {root.Id} container {flow.ContainerId} is not in the registration"); continue; }
+            if (string.IsNullOrWhiteSpace(flow.HandlerId)) continue;
+            if (!handlers.TryGetValue(flow.HandlerId, out var handler)) { issues.Add($"V-011: root {root.Id} handler {flow.HandlerId} is not in the registration"); continue; }
+            if (handler.ContainerId != flow.ContainerId)
+            {
+                issues.Add($"V-011: root {root.Id} handler {flow.HandlerId} belongs to {handler.ContainerId}, not {flow.ContainerId}");
+                continue;
+            }
+            var sourceScope = handler.Scope ?? container.Scope ?? "both";
             if (!Within(root.Scope, sourceScope)) issues.Add($"V-002: root {root.Id} scope '{root.Scope}' widens Flow source scope '{sourceScope}'");
         }
+        foreach (var (handlerId, claims) in rootsByHandler.Where(kv => kv.Value.Count > 1))
+            issues.Add($"V-011: more than one root for handler {handlerId} ({string.Join(", ", claims.Order(StringComparer.Ordinal))})");
 
         // V-005 drill ownership: openers are inside components of the direct parent; each non-root opened exactly once.
         var openers = new Dictionary<string, int>(StringComparer.Ordinal);

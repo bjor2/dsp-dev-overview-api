@@ -2,30 +2,24 @@
   "$schema": "../../architecture-layer.schema.json",
   "schemaVersion": 1,
   "documentType": "architecture-layer",
-  "id": "layer:customerproject.func-app",
+  "id": "layer:customerproject.fn.commands",
   "project": "customerproject",
-  "title": "Functions \u2014 domain and command responsibilities",
-  "summary": "Inside the Functions compute container: DOMAIN applies Ingress snapshots, COMMANDS runs project, address, order-association, notification and import work. Queues, the topic, SQL, blob and external HTTP services are boundary dependencies. Arrows explain responsibilities, not execution order or observed events; handler self-requeues are badges.",
+  "title": "COMMANDS \u2014 project, address, order, notification and import work",
+  "summary": "Explore of the COMMANDS handler inside the Functions container: project creation and date sync, customer-address upsert via ERP, order association, order notifications and project/image import. Queues, the topic, SQL, blob and external HTTP services are boundary dependencies; handler self-requeues are badges, not arrows.",
   "parentLayerId": null,
   "flowRef": {
-    "containerId": "container:customerproject.func-app"
+    "containerId": "container:customerproject.func-app",
+    "handlerId": "customerproject.fn.commands"
   },
   "scope": "both",
-  "reviewedAt": "2026-11-06T11:30:00+01:00",
+  "reviewedAt": "2026-11-06T16:01:48+01:00",
   "sources": [
     {
       "kind": "registration",
       "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
-      "note": "func-app container with DOMAIN and COMMANDS handlers.",
+      "note": "customerproject.fn.commands handler (q:customerproject) in container func-app; publishes to t:customerproject-topic and q:communication.",
       "confidence": "confirmed",
       "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
-    },
-    {
-      "kind": "repo",
-      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
-      "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
-      "confidence": "confirmed",
-      "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
     },
     {
       "kind": "repo",
@@ -54,88 +48,17 @@
       "revision": "version:4",
       "confidence": "confirmed",
       "note": "2023 workshop domain context (project vs delivery address, CUNO/ADID). Not implementation evidence."
-    },
-    {
-      "kind": "confluence",
-      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779013",
-      "revision": "version:6",
-      "confidence": "confirmed",
-      "note": "Historical upstream ADF/M3 address and HasProjectPrice analysis; not evidence of current in-process behaviour."
-    },
-    {
-      "kind": "confluence",
-      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774292",
-      "revision": "version:13",
-      "confidence": "confirmed",
-      "note": "2024 conversion design: PICo/Table Event streams for CustomerAddress and ProjectWithPrice; design intent, not deployment proof."
     }
   ],
   "uncertainties": [
     "Local source HEAD b0864c051065f88e978b6d110483096c915d7edf at review (clean); deployment freshness unknown. Per-file hashes identify reviewed evidence.",
-    "Confluence 22774292 (v13) describes the event-stream conversion that produces these snapshots; it does not prove rollout. Confluence 22779013 (v6) HasProjectPrice logic is historical ADF analysis and differs from current snapshot handling; no reconciliation is asserted.",
-    "Confluence 22779513 (v4) frames project vs delivery address; current code creates projects only for NEW Delivery-type addresses (UpdateCustomerAddressFromSnapshotHandler lines 47\u201360). Whether that matches business intent is unverified.",
     "Dahl.Core MessageHandler retry/claim-check semantics (HandleWithRetry, HandleOnce, short in-process retry) are outside reviewed source; no retry topology is drawn.",
-    "CustomerProjectService (ERP-backed create/update) is registered only in the API host, not in Functions (Application ServiceCollectionExtensions lines 17\u201349)."
+    "CustomerProjectService (ERP-backed create/update) is registered only in the API host, not in Functions (Application ServiceCollectionExtensions lines 17\u201349).",
+    "Which addresses trigger project creation is decided in DOMAIN (see layer:customerproject.fn.domain); Confluence 22779513 (v4) project-vs-delivery-address framing applies there and is not reconciled here.",
+    "Re-cut from retired root layer:customerproject.func-app (ADDENDA-011.1 per-handler roots); old layer id is ignored for dsp-arch-pos and not recycled. New split layers start auto-layout.",
+    "Responsibilities of the sibling handler in the same container are shown only as boundary queue/store nodes; no cross-root edges are drawn."
   ],
   "nodes": [
-    {
-      "id": "comp:customerproject.func.domain-input",
-      "label": "Domain update queue",
-      "kind": "external",
-      "responsibility": "Boundary input carrying UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot from Ingress SNAPSHOT.",
-      "boundary": "outside",
-      "sources": [
-        {
-          "kind": "repo",
-          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
-          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
-          "confidence": "confirmed",
-          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
-        },
-        {
-          "kind": "registration",
-          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
-          "note": "q:customerproject-domain triggers customerproject.fn.domain.",
-          "confidence": "confirmed",
-          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
-        }
-      ],
-      "uncertainties": [],
-      "owner": "customerproject",
-      "flowEntityId": "q:customerproject-domain"
-    },
-    {
-      "id": "comp:customerproject.func.snapshot-apply",
-      "label": "Apply ingress snapshots (DOMAIN)",
-      "kind": "component",
-      "responsibility": "Applies address and project-price snapshots to domain storage and decides whether project work is needed. Open for the snapshot-apply sub-layer.",
-      "boundary": "inside",
-      "sources": [
-        {
-          "kind": "repo",
-          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
-          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
-          "confidence": "confirmed",
-          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
-        },
-        {
-          "kind": "repo",
-          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
-          "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
-          "confidence": "confirmed",
-          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
-        },
-        {
-          "kind": "repo",
-          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateProjectWithPriceFromSnapshotHandler.cs",
-          "note": "Lines 16\u201334: save ProjectWithPrice from snapshot; comment states no CustomerProjectChanged publish is needed.",
-          "confidence": "confirmed",
-          "revision": "sha256:39b722193830ee568568cf3abae5de5cadc3e1a35d84e0a3b435a936be8b3e4c"
-        }
-      ],
-      "uncertainties": [],
-      "opensLayerId": "layer:customerproject.func-app.domain-update"
-    },
     {
       "id": "comp:customerproject.func.command-input",
       "label": "Command queue",
@@ -582,70 +505,6 @@
     }
   ],
   "edges": [
-    {
-      "id": "aedge:customerproject.func.domain-in",
-      "from": "comp:customerproject.func.domain-input",
-      "to": "comp:customerproject.func.snapshot-apply",
-      "kind": "conceptual",
-      "relationship": "message",
-      "label": "Snapshot update commands",
-      "description": "Two subject families from Ingress SNAPSHOT.",
-      "sources": [
-        {
-          "kind": "repo",
-          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
-          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
-          "confidence": "confirmed",
-          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
-        }
-      ],
-      "uncertainties": []
-    },
-    {
-      "id": "aedge:customerproject.func.snapshot-store",
-      "from": "comp:customerproject.func.snapshot-apply",
-      "to": "comp:customerproject.func.storage",
-      "kind": "conceptual",
-      "relationship": "data",
-      "label": "Address / ProjectWithPrice rows",
-      "description": "Snapshot destinations with bookkeeping.",
-      "sources": [
-        {
-          "kind": "repo",
-          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
-          "note": "Lines 21\u201336 and 81\u2013106: Dahl.Core ImportStorableEntityFromSnapshotBase with bookkeeping + storable-entity storage; composite key lookup.",
-          "confidence": "confirmed",
-          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
-        },
-        {
-          "kind": "repo",
-          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateProjectWithPriceFromSnapshotHandler.cs",
-          "note": "Lines 16\u201334: save ProjectWithPrice from snapshot; comment states no CustomerProjectChanged publish is needed.",
-          "confidence": "confirmed",
-          "revision": "sha256:39b722193830ee568568cf3abae5de5cadc3e1a35d84e0a3b435a936be8b3e4c"
-        }
-      ],
-      "uncertainties": []
-    },
-    {
-      "id": "aedge:customerproject.func.snapshot-commands",
-      "from": "comp:customerproject.func.snapshot-apply",
-      "to": "comp:customerproject.func.command-input",
-      "kind": "conceptual",
-      "relationship": "message",
-      "label": "Create / address-changed commands",
-      "description": "CreateProjectsFromErpReferences (new delivery address) or HandleCustomerAddressChanged.",
-      "sources": [
-        {
-          "kind": "repo",
-          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
-          "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
-          "confidence": "confirmed",
-          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
-        }
-      ],
-      "uncertainties": []
-    },
     {
       "id": "aedge:customerproject.func.cmd-lifecycle",
       "from": "comp:customerproject.func.command-input",

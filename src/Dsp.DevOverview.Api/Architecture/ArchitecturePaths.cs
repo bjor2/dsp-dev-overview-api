@@ -18,7 +18,11 @@ public static partial class ArchitecturePaths
 
     public static bool IsSafeBasename(string path) => Basename().IsMatch(path);
 
-    /// <summary>Directory for a registration's project, or null when the project name could never be a safe directory.</summary>
+    /// <summary>
+    /// Directory for a registration's project, or null when the project name could never be a safe directory. A <c>_</c>-prefixed
+    /// sibling (e.g. <c>_obsolete/</c>, retired layers kept for reference) never matches, and catalog paths are sibling basenames
+    /// that cannot start with <c>_</c> or name a subdirectory, so such a directory is never a project or a layer source.
+    /// </summary>
     public static string? ProjectDir(string layersRoot, string project) =>
         ProjectName().IsMatch(project) ? Path.Combine(Path.GetFullPath(layersRoot), project) : null;
 

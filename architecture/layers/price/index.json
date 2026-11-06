@@ -6,12 +6,28 @@
   "registrationId": "price.dev",
   "layers": [
     {
-      "id": "layer:price.func-app",
-      "path": "func-app.json"
+      "id": "layer:price.fn.ingress",
+      "path": "fn.ingress.json"
     },
     {
-      "id": "layer:price.ingress-app",
-      "path": "ingress-app.json"
+      "id": "layer:price.fn.snapshot",
+      "path": "fn.snapshot.json"
+    },
+    {
+      "id": "layer:price.fn.commands",
+      "path": "fn.commands.json"
+    },
+    {
+      "id": "layer:price.fn.domain",
+      "path": "fn.domain.json"
+    },
+    {
+      "id": "layer:price.fn.domain-ingress",
+      "path": "fn.domain-ingress.json"
+    },
+    {
+      "id": "layer:price.fn.blob-optimera",
+      "path": "fn.blob-optimera.json"
     },
     {
       "id": "layer:price.api",

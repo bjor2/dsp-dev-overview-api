@@ -5,10 +5,10 @@
   "id": "layer:customerproject.func-app.domain-update",
   "project": "customerproject",
   "title": "DOMAIN \u2014 applying ingress snapshots",
-  "summary": "Second-level drill-down of Functions \u2192 \u201cApply ingress snapshots\u201d. Shows how address and project-price snapshots become domain rows and when address changes trigger project work. Conceptual responsibilities only.",
-  "parentLayerId": "layer:customerproject.func-app",
+  "summary": "Second-level drill-down of DOMAIN \u2192 \u201cApply ingress snapshots\u201d. Shows how address and project-price snapshots become domain rows and when address changes trigger project work. Conceptual responsibilities only.",
+  "parentLayerId": "layer:customerproject.fn.domain",
   "scope": "both",
-  "reviewedAt": "2026-11-06T11:30:00+01:00",
+  "reviewedAt": "2026-11-06T16:01:48+01:00",
   "sources": [
     {
       "kind": "repo",
@@ -176,7 +176,7 @@
       "id": "comp:customerproject.domain-update.commands-out",
       "label": "Command queue",
       "kind": "external",
-      "responsibility": "Boundary output to COMMANDS (parent layer\u2019s project lifecycle).",
+      "responsibility": "Boundary output to COMMANDS (handled in layer:customerproject.fn.commands).",
       "boundary": "outside",
       "sources": [
         {

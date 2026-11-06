@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace Dsp.DevOverview.Api.Architecture;
 
 // ADDENDA-011 documents (architecture-layer.schema.json). Deserialized only after the schema accepted them, so the shape is
-// guaranteed; these typed views carry just what the cross-document checks (V-002..V-008) need.
+// guaranteed; these typed views carry just what the cross-document checks (V-002..V-008, V-011) need.
 
 public sealed record ArchitectureCatalogDoc(string Project, string RegistrationId, IReadOnlyList<ArchitectureCatalogEntryDoc> Layers);
 
@@ -21,10 +21,11 @@ public sealed record ArchitectureEdgeDoc(string Id, string From, string To, stri
 
 public sealed record ArchitectureSourceDoc(string Kind, string Ref, string Confidence, string? Note);
 
-/// <summary>Root anchor in Flow: a container, or one handler inside it.</summary>
-public sealed record ArchitectureFlowRef(
-    string ContainerId,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? HandlerId = null);
+/// <summary>
+/// Root anchor in Flow (ADDENDA-011.1): one handler item and the container it sits in. Both are required and always serialized;
+/// container-only roots are rejected (V-011), so a valid catalog never has a blank <see cref="HandlerId"/>.
+/// </summary>
+public sealed record ArchitectureFlowRef(string ContainerId, string HandlerId);
 
 public sealed record ArchitectureCrumb(string LayerId, string Title);
 
@@ -44,13 +45,9 @@ public sealed record ArchitectureRoot(string LayerId, string Title, Architecture
 public sealed record ArchitectureCatalog(
     string RegistrationId, IReadOnlyList<ArchitectureRoot> Roots, IReadOnlyDictionary<string, ArchitectureLayer> Layers, string CatalogHash)
 {
-    /// <summary>Flow container id → root layer id (container roots only, i.e. no handlerId).</summary>
-    public IReadOnlyDictionary<string, string> ContainerLinks { get; } =
-        Roots.Where(r => r.FlowRef.HandlerId is null).ToDictionary(r => r.FlowRef.ContainerId, r => r.LayerId);
-
-    /// <summary>Flow handler id → root layer id (handler-specific roots).</summary>
+    /// <summary>Flow handler id → root layer id. The only Flow drill links: containers are never Explore targets (ADDENDA-011.1).</summary>
     public IReadOnlyDictionary<string, string> HandlerLinks { get; } =
-        Roots.Where(r => r.FlowRef.HandlerId is not null).ToDictionary(r => r.FlowRef.HandlerId!, r => r.LayerId);
+        Roots.ToDictionary(r => r.FlowRef.HandlerId, r => r.LayerId, StringComparer.Ordinal);
 }
 
 public enum ArchitectureStatus { Absent, Valid, Invalid }

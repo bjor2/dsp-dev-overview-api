@@ -1,0 +1,149 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.fn.domain",
+  "project": "price",
+  "title": "DOMAIN \u2014 applying Optimera snapshots",
+  "summary": "Explore of the DOMAIN handler inside the price Functions container: Update{Campaign,CampaignPrice,DirectDeliverySupplier,ValidProduct}FromSnapshot messages from Ingress SNAPSHOT are applied to the price database. Deliberately thin: one inside responsibility, kept because it is code-evidenced.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:price.func-app",
+    "handlerId": "price.fn.domain"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T16:04:10+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/price.dev.json",
+      "note": "price.fn.domain handler (q:price-domain) in container func-app.",
+      "confidence": "confirmed",
+      "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceDomainQueueHandler.cs",
+      "note": "Lines 37\u201366: DOMAIN subjects: Update{Campaign,CampaignPrice,DirectDeliverySupplier,ValidProduct}FromSnapshot.",
+      "confidence": "confirmed",
+      "revision": "sha256:15f079ff0991517b640c88c048ad70339687e98287e4493046076d9852f6ed6d"
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256 (Team Lead ruled HEAD check unnecessary).",
+    "Write-side storage type/topology beyond EF registration is not asserted.",
+    "Thin by design (map flag): single inside responsibility; no deeper sub-layer evidenced.",
+    "Re-cut from retired root layer:price.func-app (ADDENDA-011.1 per-handler roots); old layer id is ignored for dsp-arch-pos and not recycled. New split layers start auto-layout.",
+    "Responsibilities of sibling handlers in the same container are shown only as boundary queue/store nodes; no cross-root edges are drawn."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.func.domain-input",
+      "label": "Price domain queue",
+      "kind": "external",
+      "responsibility": "Boundary input of Optimera snapshot updates from Ingress SNAPSHOT.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceDomainQueueHandler.cs",
+          "note": "Lines 37\u201366: DOMAIN subjects: Update{Campaign,CampaignPrice,DirectDeliverySupplier,ValidProduct}FromSnapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:15f079ff0991517b640c88c048ad70339687e98287e4493046076d9852f6ed6d"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "q:price-domain triggers price.fn.domain.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "q:price-domain"
+    },
+    {
+      "id": "comp:price.func.snapshot-apply",
+      "label": "Apply Optimera snapshots",
+      "kind": "component",
+      "responsibility": "Applies Campaign, CampaignPrice, DirectDeliverySupplier and ValidProduct snapshots.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceDomainQueueHandler.cs",
+          "note": "Lines 37\u201366: DOMAIN subjects: Update{Campaign,CampaignPrice,DirectDeliverySupplier,ValidProduct}FromSnapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:15f079ff0991517b640c88c048ad70339687e98287e4493046076d9852f6ed6d"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/UpdateFromIngressSnapshot/UpdateOptimeraValidProductFromSnapshotHandler.cs",
+          "note": "One of four snapshot-apply handlers (ValidProduct).",
+          "confidence": "confirmed",
+          "revision": "sha256:083284168987f5c47af213883ee008ea80093f210b158dcf26eb53cc76f753cd"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.domain.price-db",
+      "label": "Price SQL storage",
+      "kind": "store",
+      "responsibility": "Write-side price database (prices, campaigns, calculation reference data). DOMAIN writes snapshot-applied Optimera data here.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Storage.Write/PriceStorageDbContext.cs",
+          "note": "Write-side price SQL EF DbContext; no values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:df11a327132a271f1c4dec8c2ba44cc97c231b5c3fcdc44e026c71c84a3b1b81"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.func.domain-in",
+      "from": "comp:price.func.domain-input",
+      "to": "comp:price.func.snapshot-apply",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Update*FromSnapshot",
+      "description": "Four Optimera snapshot kinds.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceDomainQueueHandler.cs",
+          "note": "Lines 37\u201366: DOMAIN subjects: Update{Campaign,CampaignPrice,DirectDeliverySupplier,ValidProduct}FromSnapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:15f079ff0991517b640c88c048ad70339687e98287e4493046076d9852f6ed6d"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.func.domain-db",
+      "from": "comp:price.func.snapshot-apply",
+      "to": "comp:price.domain.price-db",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Snapshot rows",
+      "description": "Snapshot destinations.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/UpdateFromIngressSnapshot/UpdateOptimeraValidProductFromSnapshotHandler.cs",
+          "note": "One of four snapshot-apply handlers (ValidProduct).",
+          "confidence": "confirmed",
+          "revision": "sha256:083284168987f5c47af213883ee008ea80093f210b158dcf26eb53cc76f753cd"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}
