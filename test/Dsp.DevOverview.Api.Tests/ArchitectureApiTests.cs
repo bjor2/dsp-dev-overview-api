@@ -47,7 +47,15 @@ public sealed class ArchitectureApiTests : IDisposable
         return (r.StatusCode, JsonDocument.Parse(raw).RootElement, raw);
     }
 
-    private static string Layer(string layerId) => $"{P}/architecture/layer?layerId={Uri.EscapeDataString(layerId)}";
+    private const string Price = "/api/projects/price.dev";
+    private const string FuncLayer = "layer:customerproject.func-app";
+    private const string DomainUpdateLayer = "layer:customerproject.func-app.domain-update";
+    private const string ApiLayer = "layer:customerproject.api";
+
+    private static string Layer(string layerId, string project = P) => $"{project}/architecture/layer?layerId={Uri.EscapeDataString(layerId)}";
+
+    private static string[] Ids(JsonElement array, string property = "layerId") =>
+        array.EnumerateArray().Select(x => x.GetProperty(property).GetString()!).ToArray();
 
     private static JsonElement Container(JsonElement flow, string id) =>
         flow.GetProperty("containers").EnumerateArray().Single(c => c.GetProperty("id").GetString() == id);
@@ -82,8 +90,8 @@ public sealed class ArchitectureApiTests : IDisposable
         var (status, index, raw) = await Get(http, $"{P}/architecture");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal(("customerproject.dev", 1), (index.GetProperty("projectId").GetString(), index.GetProperty("schemaVersion").GetInt32()));
-        var root = Assert.Single(index.GetProperty("roots").EnumerateArray());
-        Assert.Equal(LayerTree.RootLayer, root.GetProperty("layerId").GetString());
+        Assert.Equal([ApiLayer, FuncLayer, LayerTree.RootLayer], Ids(index.GetProperty("roots")));
+        var root = index.GetProperty("roots").EnumerateArray().Single(r => r.GetProperty("layerId").GetString() == LayerTree.RootLayer);
         Assert.Equal("Ingress — import and snapshot responsibilities", root.GetProperty("title").GetString());
         Assert.Equal(LayerTree.IngressContainer, root.GetProperty("flowRef").GetProperty("containerId").GetString());
         Assert.False(root.GetProperty("flowRef").TryGetProperty("handlerId", out _));
@@ -109,16 +117,82 @@ public sealed class ArchitectureApiTests : IDisposable
         (status, var flow, _) = await Get(http, $"{P}/flow");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal(LayerTree.RootLayer, Container(flow, LayerTree.IngressContainer).GetProperty("opensLayerId").GetString());
-        Assert.False(Container(flow, "container:customerproject.func-app").TryGetProperty("opensLayerId", out _));
-        Assert.False(Container(flow, "container:customerproject.api").TryGetProperty("opensLayerId", out _));
+        Assert.Equal(FuncLayer, Container(flow, "container:customerproject.func-app").GetProperty("opensLayerId").GetString());
+        Assert.Equal(ApiLayer, Container(flow, "container:customerproject.api").GetProperty("opensLayerId").GetString());
         Assert.All(flow.GetProperty("nodes").EnumerateArray(), n => Assert.False(n.TryGetProperty("opensLayerId", out _)));
         await AssertBaseFlow(http);
     }
 
     [Fact]
-    public async Task Project_without_catalog_has_empty_roots_and_no_flow_links()
+    public async Task Real_customerproject_func_app_opens_nested_domain_update_with_inherited_root_flow_ref()
     {
         var http = Client();
+        var (status, func, _) = await Get(http, Layer(FuncLayer));
+        Assert.Equal(HttpStatusCode.OK, status);
+        var child = Assert.Single(func.GetProperty("children").EnumerateArray());
+        Assert.Equal((DomainUpdateLayer, "comp:customerproject.func.snapshot-apply"),
+            (child.GetProperty("layerId").GetString(), child.GetProperty("openedByNodeId").GetString()));
+        Assert.Contains(func.GetProperty("layer").GetProperty("nodes").EnumerateArray(),
+            n => n.GetProperty("id").GetString() == "comp:customerproject.func.snapshot-apply" && n.GetProperty("opensLayerId").GetString() == DomainUpdateLayer);
+
+        (status, var nested, var raw) = await Get(http, Layer(DomainUpdateLayer));
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal([FuncLayer, DomainUpdateLayer], Ids(nested.GetProperty("breadcrumbs")));
+        Assert.Equal("container:customerproject.func-app", nested.GetProperty("rootFlowRef").GetProperty("containerId").GetString());
+        Assert.False(nested.GetProperty("layer").TryGetProperty("flowRef", out _));
+        Assert.Equal(0, nested.GetProperty("children").GetArrayLength());
+        AssertNoMachinePaths(raw);
+
+        // The nested layer is not a root and nothing in Flow opens it directly.
+        var (_, index, _) = await Get(http, $"{P}/architecture");
+        Assert.DoesNotContain(DomainUpdateLayer, Ids(index.GetProperty("roots")));
+        Assert.DoesNotContain(DomainUpdateLayer, await http.GetStringAsync($"{P}/flow?scope=all"));
+    }
+
+    [Fact]
+    public async Task Real_price_catalog_serves_four_roots_nested_get_prices_and_flow_links()
+    {
+        var http = Client();
+        var (status, index, raw) = await Get(http, $"{Price}/architecture");
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal("price.dev", index.GetProperty("projectId").GetString());
+        Assert.Equal(["layer:price.api", "layer:price.api-batch", "layer:price.func-app", "layer:price.ingress-app"], Ids(index.GetProperty("roots")));
+        Assert.Equal(0, index.GetProperty("warnings").GetArrayLength());
+        AssertNoMachinePaths(raw);
+
+        (status, var nested, raw) = await Get(http, Layer("layer:price.api.get-prices", Price));
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal(["layer:price.api", "layer:price.api.get-prices"], Ids(nested.GetProperty("breadcrumbs")));
+        Assert.Equal("container:price.api", nested.GetProperty("rootFlowRef").GetProperty("containerId").GetString());
+        AssertNoMachinePaths(raw);
+        var (_, api, _) = await Get(http, Layer("layer:price.api", Price));
+        var child = Assert.Single(api.GetProperty("children").EnumerateArray());
+        Assert.Equal(("layer:price.api.get-prices", "comp:price.api.price-reader"),
+            (child.GetProperty("layerId").GetString(), child.GetProperty("openedByNodeId").GetString()));
+
+        (status, var batch, _) = await Get(http, Layer("layer:price.api-batch", Price));
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.NotEqual(0, batch.GetProperty("layer").GetProperty("uncertainties").GetArrayLength());
+
+        (status, var flow, _) = await Get(http, $"{Price}/flow?scope=all");
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.All(flow.GetProperty("containers").EnumerateArray(), c =>
+            Assert.Equal(c.GetProperty("id").GetString()!.Replace("container:", "layer:"), c.GetProperty("opensLayerId").GetString()));
+        Assert.Equal(4, flow.GetProperty("containers").GetArrayLength());
+        Assert.All(flow.GetProperty("nodes").EnumerateArray(), n => Assert.False(n.TryGetProperty("opensLayerId", out _)));
+        Assert.DoesNotContain(flow.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.StartsWith("ARCHITECTURE"));
+
+        // Cross-project ids never resolve: a real price id on the customerproject route is 404, and vice versa.
+        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync(Layer("layer:price.api"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync(Layer(FuncLayer, Price))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Project_without_catalog_has_empty_roots_and_no_flow_links()
+    {
+        var tree = Tree(LayerTree.Real()); // layers root with a customerproject catalog only: no price folder
+        tree.Write();
+        var http = Client(tree.LayersRoot);
         var (status, index, _) = await Get(http, "/api/projects/price.dev/architecture");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal((0, 0), (index.GetProperty("roots").GetArrayLength(), index.GetProperty("warnings").GetArrayLength()));
@@ -189,6 +263,7 @@ public sealed class ArchitectureApiTests : IDisposable
         var tree = Tree(LayerTree.Deep(3));
         tree.Layer(1)["parentLayerId"] = tree.Layer(2)["id"]!.GetValue<string>(); // navigation cycle
         tree.Write();
+        Tree(LayerTree.PriceReal(tree.LayersRoot)).Write();
         var http = Client(tree.LayersRoot);
 
         var (status, index, raw) = await Get(http, $"{P}/architecture");
@@ -214,9 +289,12 @@ public sealed class ArchitectureApiTests : IDisposable
         Assert.Contains(flow.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.StartsWith("ARCHITECTURE_INVALID: "));
         AssertNoMachinePaths(raw, tree.LayersRoot);
 
-        // Other projects are unaffected (their own catalog state: none).
-        (status, var price, _) = await Get(http, "/api/projects/price.dev/architecture");
-        Assert.Equal((HttpStatusCode.OK, 0), (status, price.GetProperty("warnings").GetArrayLength()));
+        // Other projects are unaffected: price has a valid catalog in the same layers root and keeps serving it.
+        (status, var price, _) = await Get(http, $"{Price}/architecture");
+        Assert.Equal((HttpStatusCode.OK, 0, 4), (status, price.GetProperty("warnings").GetArrayLength(), price.GetProperty("roots").GetArrayLength()));
+        Assert.Equal(HttpStatusCode.OK, (await http.GetAsync(Layer("layer:price.api.get-prices", Price))).StatusCode);
+        (_, var priceFlow, _) = await Get(http, $"{Price}/flow?scope=all");
+        Assert.All(priceFlow.GetProperty("containers").EnumerateArray(), c => Assert.True(c.TryGetProperty("opensLayerId", out _)));
     }
 
     [Fact]

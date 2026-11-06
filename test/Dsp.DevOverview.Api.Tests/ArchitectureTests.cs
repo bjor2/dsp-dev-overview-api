@@ -9,37 +9,59 @@ using Xunit.Abstractions;
 
 namespace Dsp.DevOverview.Api.Tests;
 
-/// <summary>Writable copy of a customerproject architecture catalog in a temp layers root (the real files are only read).</summary>
+/// <summary>Writable copy of a real architecture catalog in a temp layers root (the real files are only read).</summary>
 internal sealed class LayerTree : IDisposable
 {
     public const string RootLayer = "layer:customerproject.ingress-app";
     public const string IngressContainer = "container:customerproject.ingress-app";
 
-    public string LayersRoot { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsp-arch-" + Guid.NewGuid().ToString("N"));
-    public string ProjectDir => System.IO.Path.Combine(LayersRoot, "customerproject");
+    public string Project { get; }
+    public ProjectRegistration TreeRegistration { get; }
+    public string LayersRoot { get; }
+    public string ProjectDir => System.IO.Path.Combine(LayersRoot, Project);
     public JsonObject Catalog { get; }
     public List<JsonObject> Layers { get; }
 
     private static readonly Lazy<ArchitectureSchema> SharedSchema = new(() => new ArchitectureSchema(RepoPaths.ArchitectureSchema));
     private static readonly Lazy<ProjectRegistration> SharedRegistration = new(() => new RegistrationLoader(RepoPaths.Schema).Load(RepoPaths.Registration));
+    private static readonly Lazy<ProjectRegistration> SharedPriceRegistration = new(() => new RegistrationLoader(RepoPaths.Schema).Load(RepoPaths.PriceRegistration));
     public static ProjectRegistration Registration => SharedRegistration.Value;
+    public static ProjectRegistration PriceRegistration => SharedPriceRegistration.Value;
+    public static ArchitectureSchema Schema => SharedSchema.Value;
 
-    private LayerTree(JsonObject catalog, List<JsonObject> layers) => (Catalog, Layers) = (catalog, layers);
+    private LayerTree(string project, ProjectRegistration registration, string? layersRoot, JsonObject catalog, List<JsonObject> layers) =>
+        (Project, TreeRegistration, LayersRoot, Catalog, Layers) =
+            (project, registration, layersRoot ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dsp-arch-" + Guid.NewGuid().ToString("N")), catalog, layers);
 
-    public static LayerTree Real()
+    private static LayerTree FromRepo(string project, ProjectRegistration registration, string? layersRoot)
     {
-        var dir = System.IO.Path.Combine(RepoPaths.ArchitectureLayers, "customerproject");
+        var dir = System.IO.Path.Combine(RepoPaths.ArchitectureLayers, project);
         var catalog = JsonNode.Parse(File.ReadAllText(System.IO.Path.Combine(dir, "index.json")))!.AsObject();
         var layers = catalog["layers"]!.AsArray()
             .Select(e => JsonNode.Parse(File.ReadAllText(System.IO.Path.Combine(dir, e!["path"]!.GetValue<string>())))!.AsObject()).ToList();
-        return new LayerTree(catalog, layers);
+        return new LayerTree(project, registration, layersRoot, catalog, layers);
     }
 
-    /// <summary>Real root plus a chain of children (depth 2..<paramref name="depth"/>), each opened by its parent's import component.</summary>
+    /// <summary>The full checked-in customerproject catalog (3 roots, one nested child).</summary>
+    public static LayerTree Real(string? layersRoot = null) => FromRepo("customerproject", Registration, layersRoot);
+
+    /// <summary>The full checked-in price catalog (4 roots, one nested child), validated against price.dev.</summary>
+    public static LayerTree PriceReal(string? layersRoot = null) => FromRepo("price", PriceRegistration, layersRoot);
+
+    /// <summary>
+    /// Synthetic forest built from the ingress worked example only: the ingress root is the sole catalog entry, followed by a
+    /// chain of children (depth 2..<paramref name="depth"/>), each opened by its parent's inside import component (node 1).
+    /// Layer/Entry indexes are therefore 0 = root, 1 = depth 2, 2 = depth 3, …
+    /// </summary>
     public static LayerTree Deep(int depth)
     {
         var tree = Real();
-        var template = tree.Layers[0].DeepClone().AsObject();
+        var root = tree.Layers.Single(l => l["id"]!.GetValue<string>() == RootLayer);
+        var rootEntry = tree.Catalog["layers"]!.AsArray().Single(e => e!["id"]!.GetValue<string>() == RootLayer)!.DeepClone();
+        tree.Layers.Clear();
+        tree.Layers.Add(root);
+        tree.Catalog["layers"] = new JsonArray(rootEntry);
+        var template = root.DeepClone().AsObject();
         for (var d = 2; d <= depth; d++)
         {
             var suffix = ".test" + d;
@@ -79,7 +101,7 @@ internal sealed class LayerTree : IDisposable
     }
 
     public ArchitectureState Load(ProjectRegistration? registration = null) =>
-        ArchitectureLoader.Load(LayersRoot, registration ?? Registration, () => SharedSchema.Value);
+        ArchitectureLoader.Load(LayersRoot, registration ?? TreeRegistration, () => SharedSchema.Value);
 
     public ArchitectureState WriteAndLoad() => Write().Load();
 
@@ -92,38 +114,117 @@ internal sealed class LayerTree : IDisposable
 public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
 {
     private static ArchitectureState LoadReal() =>
-        ArchitectureLoader.Load(RepoPaths.ArchitectureLayers, LayerTree.Registration, () => new ArchitectureSchema(RepoPaths.ArchitectureSchema));
+        ArchitectureLoader.Load(RepoPaths.ArchitectureLayers, LayerTree.Registration, () => LayerTree.Schema);
+
+    private static ArchitectureState LoadPrice() =>
+        ArchitectureLoader.Load(RepoPaths.ArchitectureLayers, LayerTree.PriceRegistration, () => LayerTree.Schema);
+
+    private const string FuncLayer = "layer:customerproject.func-app";
+    private const string DomainUpdateLayer = "layer:customerproject.func-app.domain-update";
+    private const string ApiLayer = "layer:customerproject.api";
 
     [Fact]
-    public void Real_catalog_has_one_root_seven_nodes_nine_conceptual_edges_and_a_root_crumb()
+    public void Real_customerproject_catalog_has_three_roots_and_a_nested_domain_update_child()
     {
         var state = LoadReal();
-        Assert.Equal(ArchitectureStatus.Valid, state.Status);
+        Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
         Assert.Empty(state.Issues);
         var c = state.Catalog!;
-        var root = Assert.Single(c.Roots);
-        Assert.Equal((LayerTree.RootLayer, LayerTree.IngressContainer, (string?)null), (root.LayerId, root.FlowRef.ContainerId, root.FlowRef.HandlerId));
-        Assert.Equal("Ingress — import and snapshot responsibilities", root.Title);
+        Assert.Equal([ApiLayer, FuncLayer, LayerTree.RootLayer], c.Roots.Select(r => r.LayerId)); // ordinal by layerId
+        Assert.All(c.Roots, r => Assert.Null(r.FlowRef.HandlerId));
+        Assert.Equal(4, c.Layers.Count);
 
+        // Ingress worked example is unchanged: 7 nodes, 9 conceptual edges, root crumb only, no children.
+        var root = c.Roots.Single(r => r.LayerId == LayerTree.RootLayer);
+        Assert.Equal((LayerTree.IngressContainer, "Ingress — import and snapshot responsibilities"), (root.FlowRef.ContainerId, root.Title));
         var layer = c.Layers[LayerTree.RootLayer];
         Assert.Equal(7, layer.Document.GetProperty("nodes").GetArrayLength());
         Assert.Equal(9, layer.Document.GetProperty("edges").GetArrayLength());
-        Assert.All(layer.Document.GetProperty("edges").EnumerateArray(), e => Assert.Equal("conceptual", e.GetProperty("kind").GetString()));
         Assert.False(layer.Document.TryGetProperty("$schema", out _)); // relative file path is not served
         Assert.Equal(new[] { new ArchitectureCrumb(LayerTree.RootLayer, root.Title) }, layer.Breadcrumbs);
         Assert.Equal(LayerTree.IngressContainer, layer.RootFlowRef.ContainerId);
         Assert.Empty(layer.Children);
-        Assert.Equal(new Dictionary<string, string> { [LayerTree.IngressContainer] = LayerTree.RootLayer }, c.ContainerLinks);
+
+        // func-app opens domain-update from its snapshot-apply component; the child inherits the func-app Flow anchor.
+        var func = c.Layers[FuncLayer];
+        Assert.Equal(new[] { new ArchitectureChild(DomainUpdateLayer, "DOMAIN — applying ingress snapshots", "comp:customerproject.func.snapshot-apply") }, func.Children);
+        var nested = c.Layers[DomainUpdateLayer];
+        Assert.Equal([FuncLayer, DomainUpdateLayer], nested.Breadcrumbs.Select(b => b.LayerId));
+        Assert.Equal(func.Breadcrumbs, nested.Breadcrumbs.Take(1));
+        Assert.Equal(new ArchitectureFlowRef("container:customerproject.func-app"), nested.RootFlowRef);
+        Assert.False(nested.Document.TryGetProperty("flowRef", out _)); // inherited, not authored
+        Assert.Empty(nested.Children);
+        Assert.Empty(c.Layers[ApiLayer].Children);
+
+        Assert.All(c.Layers.Values.Select(l => l.Document), d =>
+            Assert.All(d.GetProperty("edges").EnumerateArray(), e => Assert.Equal("conceptual", e.GetProperty("kind").GetString())));
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["container:customerproject.api"] = ApiLayer,
+            ["container:customerproject.func-app"] = FuncLayer,
+            [LayerTree.IngressContainer] = LayerTree.RootLayer,
+        }, c.ContainerLinks);
         Assert.Empty(c.HandlerLinks);
     }
 
     [Fact]
-    public void Price_has_no_catalog_and_is_absent_without_warnings()
+    public void Real_price_catalog_has_four_roots_and_a_nested_get_prices_child()
     {
-        var price = new RegistrationLoader(RepoPaths.Schema).Load(RepoPaths.PriceRegistration);
-        var state = ArchitectureLoader.Load(RepoPaths.ArchitectureLayers, price, () => new ArchitectureSchema(RepoPaths.ArchitectureSchema));
+        var state = LoadPrice();
+        Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
+        Assert.Empty(state.Warnings);
+        var c = state.Catalog!;
+        Assert.Equal("price.dev", c.RegistrationId);
+        Assert.Equal(["layer:price.api", "layer:price.api-batch", "layer:price.func-app", "layer:price.ingress-app"], c.Roots.Select(r => r.LayerId));
+        Assert.Equal(5, c.Layers.Count);
+
+        var api = c.Layers["layer:price.api"];
+        Assert.Equal(new[] { new ArchitectureChild("layer:price.api.get-prices", "Price reading — strategy, DSP calculation and M3 fallback", "comp:price.api.price-reader") }, api.Children);
+        var nested = c.Layers["layer:price.api.get-prices"];
+        Assert.Equal(["layer:price.api", "layer:price.api.get-prices"], nested.Breadcrumbs.Select(b => b.LayerId));
+        Assert.Equal(new ArchitectureFlowRef("container:price.api"), nested.RootFlowRef);
+        Assert.False(nested.Document.TryGetProperty("flowRef", out _));
+
+        // Deliberately thin, high-uncertainty layer still loads and keeps its caveats visible.
+        var batch = c.Layers["layer:price.api-batch"].Document;
+        Assert.Equal((5, 4), (batch.GetProperty("nodes").GetArrayLength(), batch.GetProperty("edges").GetArrayLength()));
+        Assert.NotEqual(0, batch.GetProperty("uncertainties").GetArrayLength());
+
+        Assert.Equal(LayerTree.PriceRegistration.Containers.Select(x => x.Id).Order(), c.ContainerLinks.Keys.Order());
+        Assert.All(c.ContainerLinks, kv => Assert.Equal(kv.Key.Replace("container:", "layer:"), kv.Value));
+        Assert.Empty(c.HandlerLinks);
+    }
+
+    [Fact]
+    public void Project_without_a_catalog_folder_is_absent_without_warnings()
+    {
+        using var tree = LayerTree.Real();
+        tree.Write(); // the temp layers root holds customerproject only, no price folder
+        var state = tree.Load(LayerTree.PriceRegistration);
         Assert.Equal(ArchitectureStatus.Absent, state.Status);
         Assert.Empty(state.Warnings);
+        Assert.Equal(ArchitectureStatus.Valid, tree.Load().Status);
+    }
+
+    [Fact]
+    public void Invalid_catalog_in_one_project_does_not_affect_the_other()
+    {
+        using var cp = LayerTree.Real();
+        using var price = LayerTree.PriceReal(cp.LayersRoot);
+        cp.Layer(1)["parentLayerId"] = "layer:customerproject.missing";
+        cp.Write();
+        price.Write();
+        Assert.Equal(ArchitectureStatus.Invalid, cp.Load().Status);
+        var p = price.Load();
+        Assert.True(p.Status == ArchitectureStatus.Valid, string.Join("\n", p.Issues));
+        Assert.Equal(4, p.Catalog!.Roots.Count);
+    }
+
+    [Fact]
+    public void Real_catalogs_have_no_bidirectional_boundary_node()
+    {
+        foreach (var state in new[] { LoadReal(), LoadPrice() })
+            Assert.DoesNotContain(state.Issues, i => i.Contains("both receives from and sends to"));
     }
 
     [Fact]
@@ -182,10 +283,11 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     public void Conceptual_dependency_cycles_are_permitted()
     {
         using var tree = LayerTree.Deep(3);
-        // storage → import closes import → storage: an explanatory data cycle, not a navigation cycle.
+        // address-snapshots → import closes import → snapshot-requests → address-snapshots: an explanatory dependency cycle,
+        // not a navigation cycle. (A two-edge cycle through one boundary node is the bidirectional V-007 rejection instead.)
         var back = tree.Edge(0, 1).DeepClone().AsObject();
         (back["id"], back["from"], back["to"], back["relationship"]) =
-            ("aedge:customerproject.ingress.reread", "comp:customerproject.ingress.storage", "comp:customerproject.ingress.import", "dependency");
+            ("aedge:customerproject.ingress.reread", "comp:customerproject.ingress.address-snapshots", "comp:customerproject.ingress.import", "dependency");
         tree.Layer(0)["edges"]!.AsArray().Add(back);
         var state = tree.WriteAndLoad();
         Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
@@ -206,7 +308,8 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
 
         var state = tree.WriteAndLoad();
         Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
-        Assert.Equal(2, state.Catalog!.Roots.Count);
+        Assert.Equal(4, state.Catalog!.Roots.Count);
+        Assert.Equal(3, state.Catalog.ContainerLinks.Count);
         Assert.Equal(new Dictionary<string, string> { ["customerproject.fn.ingress"] = "layer:customerproject.ingress-handler" }, state.Catalog.HandlerLinks);
 
         var g = ArchitectureService.Link(Graph(LayerTree.Registration), state);
@@ -248,6 +351,8 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         ["dangling edge endpoint"] = t => t.Edge(0, 0)["to"] = "comp:customerproject.missing",
         ["edge endpoint in another layer"] = t => t.Edge(0, 0)["to"] = t.Node(1, 1)["id"]!.GetValue<string>(),
         ["self edge"] = t => t.Edge(0, 0)["to"] = t.Edge(0, 0)["from"]!.GetValue<string>(),
+        ["bidirectional queue"] = t => t.Layer(0)["edges"]!.AsArray().Add(Reversed(t.Edge(0, 0), "aedge:customerproject.ingress.back")), // import → input queue
+        ["bidirectional store"] = t => t.Layer(0)["edges"]!.AsArray().Add(Reversed(t.Edge(0, 1), "aedge:customerproject.ingress.reread")), // storage → import
         ["live edge kind"] = t => t.Edge(0, 0)["kind"] = "observed",
         ["live field on node"] = t => t.Node(0, 0)["activeCount"] = 3,
         ["scope widened by descendant"] = t => { t.Layer(0)["scope"] = "local"; t.Layer(1)["scope"] = "both"; },
@@ -267,6 +372,29 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         ["subdirectory path"] = t => t.Entry(1)["path"] = "sub/test2.json",
         ["url path"] = t => t.Entry(1)["path"] = "https://example.com/x.json",
     };
+
+    private static JsonObject Reversed(JsonObject edge, string id)
+    {
+        var back = edge.DeepClone().AsObject();
+        (back["id"], back["from"], back["to"]) = (id, edge["to"]!.GetValue<string>(), edge["from"]!.GetValue<string>());
+        return back;
+    }
+
+    [Fact]
+    public void Bidirectional_boundary_node_names_the_rule_node_and_component()
+    {
+        using var tree = LayerTree.Deep(2);
+        tree.Layer(0)["edges"]!.AsArray().Add(Reversed(tree.Edge(0, 0), "aedge:customerproject.ingress.back"));
+        var state = tree.WriteAndLoad();
+        Assert.Equal(ArchitectureStatus.Invalid, state.Status);
+        Assert.Equal(["V-007: boundary node comp:customerproject.ingress.input both receives from and sends to the same component comp:customerproject.ingress.import"],
+            state.Issues);
+
+        // A self edge is reported once as a self edge, not again as bidirectional.
+        using var self = LayerTree.Deep(2);
+        self.Edge(0, 0)["to"] = self.Edge(0, 0)["from"]!.GetValue<string>();
+        Assert.Equal(["V-007: edge aedge:customerproject.ingress.changes is a self edge"], self.WriteAndLoad().Issues);
+    }
 
     [Theory]
     [MemberData(nameof(Rejections))]
@@ -421,14 +549,18 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         var before = Graph(LayerTree.Registration, depths);
         var after = ArchitectureService.Link(before, state);
 
-        Assert.Equal(LayerTree.RootLayer, after.Containers.Single(c => c.Id == LayerTree.IngressContainer).OpensLayerId);
-        Assert.All(after.Containers.Where(c => c.Id != LayerTree.IngressContainer), c => Assert.Null(c.OpensLayerId));
+        Assert.Equal(new Dictionary<string, string?>
+        {
+            ["container:customerproject.api"] = ApiLayer,
+            ["container:customerproject.func-app"] = FuncLayer,
+            [LayerTree.IngressContainer] = LayerTree.RootLayer,
+        }, after.Containers.ToDictionary(c => c.Id, c => c.OpensLayerId));
         Assert.All(after.Nodes, n => Assert.Null(n.OpensLayerId));
+        // Nested layers are never Flow targets: only roots are linked.
+        Assert.DoesNotContain(after.Containers, c => c.OpensLayerId == DomainUpdateLayer);
 
         // Byte-identical once the additive field is removed: schemaVersion, appIds, positions, edges, sb counts, warnings untouched.
-        var a = JsonNode.Parse(JsonSerializer.Serialize(after, RegistrationJson.Options))!;
-        a["containers"]!.AsArray().Single(c => c!["id"]!.GetValue<string>() == LayerTree.IngressContainer)!.AsObject().Remove("opensLayerId");
-        Assert.Equal(JsonSerializer.Serialize(before, RegistrationJson.Options), a.ToJsonString());
+        AssertOnlyOpensLayerIdAdded(before, after);
 
         var flowIds = after.Nodes.Select(n => n.Id).Concat(after.Containers.Select(c => c.Id)).Concat(after.Edges.Select(e => e.Id)).ToList();
         Assert.DoesNotContain(flowIds, id => id.StartsWith("comp:") || id.StartsWith("aedge:") || id.StartsWith("layer:"));
@@ -436,12 +568,36 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Price_flow_links_every_container_with_a_root_and_nothing_else()
+    {
+        var state = LoadPrice();
+        var before = Graph(LayerTree.PriceRegistration);
+        var after = ArchitectureService.Link(before, state);
+        Assert.Equal(state.Catalog!.ContainerLinks.OrderBy(kv => kv.Key),
+            after.Containers.Where(c => c.OpensLayerId is not null).Select(c => KeyValuePair.Create(c.Id, c.OpensLayerId!)).OrderBy(kv => kv.Key));
+        Assert.Equal(4, after.Containers.Count(c => c.OpensLayerId is not null));
+        Assert.All(after.Nodes, n => Assert.Null(n.OpensLayerId));
+        Assert.DoesNotContain(after.Containers, c => c.OpensLayerId == "layer:price.api.get-prices");
+        AssertOnlyOpensLayerIdAdded(before, after);
+        Assert.DoesNotContain(FlowGraphBuilder.AllNodeIds(LayerTree.PriceRegistration), id => id.StartsWith("comp:") || id.StartsWith("layer:"));
+    }
+
+    private static void AssertOnlyOpensLayerIdAdded(FlowGraph before, FlowGraph after)
+    {
+        var a = JsonNode.Parse(JsonSerializer.Serialize(after, RegistrationJson.Options))!;
+        foreach (var c in a["containers"]!.AsArray()) c!.AsObject().Remove("opensLayerId");
+        foreach (var n in a["nodes"]!.AsArray()) n!.AsObject().Remove("opensLayerId");
+        Assert.Equal(JsonSerializer.Serialize(before, RegistrationJson.Options), a.ToJsonString());
+    }
+
+    [Fact]
     public void Architecture_nodes_carry_no_live_fields_even_with_flow_entity_refs()
     {
-        var layer = LoadReal().Catalog!.Layers[LayerTree.RootLayer].Document;
         string[] live = ["sb", "activeCount", "deadLetterCount", "dlqHot", "activity", "position", "positionSource", "state"];
-        foreach (var item in layer.GetProperty("nodes").EnumerateArray().Concat(layer.GetProperty("edges").EnumerateArray()))
-            Assert.DoesNotContain(item.EnumerateObject(), p => live.Contains(p.Name));
+        foreach (var doc in LoadReal().Catalog!.Layers.Values.Concat(LoadPrice().Catalog!.Layers.Values).Select(l => l.Document))
+            foreach (var item in doc.GetProperty("nodes").EnumerateArray().Concat(doc.GetProperty("edges").EnumerateArray()))
+                Assert.DoesNotContain(item.EnumerateObject(), p => live.Contains(p.Name));
+        var layer = LoadReal().Catalog!.Layers[LayerTree.RootLayer].Document;
         // flowEntityId is a reference for "View in Flow", not a join: the node keeps exactly its authored fields.
         var input = layer.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "comp:customerproject.ingress.input");
         Assert.Equal("q:customerproject-ingress", input.GetProperty("flowEntityId").GetString());
@@ -471,6 +627,7 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         Assert.DoesNotContain("opensLayerId", File.ReadAllText(RepoPaths.Schema));
         var layerHashes = Directory.GetFiles(RepoPaths.ArchitectureLayers, "*.json", SearchOption.AllDirectories).ToDictionary(f => f, Sha256);
         LoadReal();
+        LoadPrice();
         Assert.All(layerHashes, kv => Assert.Equal(kv.Value, Sha256(kv.Key))); // GET-side loading never writes or repairs
     }
 

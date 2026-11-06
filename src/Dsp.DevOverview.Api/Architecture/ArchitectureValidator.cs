@@ -68,6 +68,14 @@ public static partial class ArchitectureValidator
                 else if (edge.From == edge.To) issues.Add($"V-007: edge {edge.Id} is a self edge");
                 CheckSources(issues, edge.Id, edge.Sources);
             }
+            // V-007 Flow v2 invariant: a boundary node never both receives from and sends to the same component
+            // (a self-requeue is a badge in the responsibility text, not a back-arrow).
+            foreach (var node in layer.Nodes.Where(n => n.Boundary == "outside"))
+            {
+                var senders = layer.Edges.Where(e => e.To == node.Id).Select(e => e.From).ToHashSet(StringComparer.Ordinal);
+                foreach (var peer in layer.Edges.Where(e => e.From == node.Id && e.To != node.Id && senders.Contains(e.To)).Select(e => e.To).Distinct())
+                    issues.Add($"V-007: boundary node {node.Id} both receives from and sends to the same component {peer}");
+            }
         }
 
         // V-004 parents/cycles + V-002 descendants cannot widen scope.

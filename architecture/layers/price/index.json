@@ -1,0 +1,29 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-catalog",
+  "project": "price",
+  "registrationId": "price.dev",
+  "layers": [
+    {
+      "id": "layer:price.func-app",
+      "path": "func-app.json"
+    },
+    {
+      "id": "layer:price.ingress-app",
+      "path": "ingress-app.json"
+    },
+    {
+      "id": "layer:price.api",
+      "path": "api.json"
+    },
+    {
+      "id": "layer:price.api.get-prices",
+      "path": "api.get-prices.json"
+    },
+    {
+      "id": "layer:price.api-batch",
+      "path": "api-batch.json"
+    }
+  ]
+}

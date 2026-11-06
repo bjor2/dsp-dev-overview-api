@@ -1,10 +1,12 @@
-# ADDENDA-011 — C4-style architecture layers (v1)
+# ADDENDA-011 — C4-style architecture layers (v1.1)
 Status: **Accepted baseline** (Team Lead 2026-11-06) · Amends ADR-002 / ADR-003 additively; ADDENDA-008 remains authoritative for L0 Flow.
 
 **Locked for implementation (not deploy auth):** forest navigation + proposed API in NOTE-ADDENDA-011-ui-developer; **auto-layout first**; separate layer-position persistence **deferred**. Developer/UI may implement against this contract.
 
 ## 1. Decision and scope
 Keep Flow exactly as it is: handlers inside flat resource/logical containers, standalone SB entities, self-requeue badges and current activity/layout. Clicking a blue container with an architecture entry opens a separate explanatory graph. Architecture describes responsibilities and data/message relationships, **not code execution flow**. It is C4-inspired rather than a promise of formal C4 levels. L1 is a container explanation; L2+ can explain a useful component, without a fixed depth ceiling.
+
+**v1.1 content (2026-11-06):** customerproject now has 4 layers (ingress-app, func-app, **func-app.domain-update** nested child, api); price has 5 (func-app, ingress-app, api, **api.get-prices** nested child, api-batch thin). See §10.
 
 First slice: `layer:customerproject.ingress-app`, linked to `container:customerproject.ingress-app`, seven nodes and nine conceptual edges. This is the clearest evidence: two queue handlers, change import, two snapshot families and SQL ingress storage. No price service layers or speculative child layers in this slice.
 
@@ -83,8 +85,27 @@ Keep existing `pos:{project}:{env}:{graphId}` Flow keys and default/stored mergi
 ## 9. Open questions / next slices through Team Lead
 1. ~~Forest + API~~ **Locked 2026-11-06 (Team Lead):** forest/direct-child rule and NOTE-ADDENDA-011-ui-developer API are the implementation baseline (not deploy authorization).
 2. ~~Layout~~ **Locked 2026-11-06 (Team Lead):** auto-layout first; separate layer-position persistence deferred.
-3. ~~Next content~~ **In progress (Team Lead):** flesh customerproject Functions/API with at least one genuine nested child, then price. No speculative empty children; cite discrepancies, do not invent reconciliation.
+3. ~~Next content~~ **Delivered v1.1 (see §10):** flesh customerproject Functions/API with at least one genuine nested child, then price. No speculative empty children; cite discrepancies, do not invent reconciliation.
 4. Business owner reconciliation of historical ADF HasProjectPrice versus current snapshot query remains open; it does not block explaining the present code with caveats.
 5. Price layers follow only after customerproject; keep source repo read-only and do not create cloud resources.
 
 Design synthesis: Claude Code `--model fable` completed a read-only design pass for the first slice. Considered its richer shared-element catalog/rollup approach, but chose a thin catalog + isolated layers to keep the first slice bounded. Rejected joining live counts, ghost references and cross-project unresolved links because this brief requires static conceptual explanations and no dangling navigation. Accepted stable edge IDs, separate layout and an architecture-specific catalog type name. Execution details are recorded in NOTE-ADDENDA-011-verification.md.
+
+## 10. v1.1 layers (customerproject Functions/API, then price)
+| Layer | Parent | Flow anchor | Nodes/edges | Notes |
+|---|---|---|---|---|
+| `layer:customerproject.ingress-app` | — | container:customerproject.ingress-app | 7/9 | unchanged worked example |
+| `layer:customerproject.func-app` | — | container:customerproject.func-app | 15/22 | DOMAIN + COMMANDS; self-requeues are badges, not back-arrows |
+| `layer:customerproject.func-app.domain-update` | func-app (opened by `comp:customerproject.func.snapshot-apply`) | inherited | 7/7 | **nested child**: address vs project-price apply, bookkeeping, new-delivery vs modified decision, feature flag |
+| `layer:customerproject.api` | — | container:customerproject.api | 13/20 | 4 controllers, project/association/image services, commands + topic out |
+| `layer:price.func-app` | — | container:price.func-app | 13/12 | commands, timers, snapshot apply, PICO direct, subscriptions, Optimera CSV import |
+| `layer:price.ingress-app` | — | container:price.ingress-app | 9/9 | import, snapshots, full reload → pricedumpfromoptimera |
+| `layer:price.api` | — | container:price.api | 9/9 | controllers V1–V3, admin, price reading |
+| `layer:price.api.get-prices` | price.api (opened by `comp:price.api.price-reader`) | inherited | 9/11 | **nested child**: tenant strategy selection, DSP calculation vs M3, fallback |
+| `layer:price.api-batch` | — | container:price.api-batch | 5/4 | deliberately thin, high uncertainty |
+
+Rules applied: Flow v2 invariant enforced in fixtures as **V-008** (no boundary node both receives from and sends to the same component); handler requeues appear in responsibilities as badges. Current code is authoritative; Confluence 22779513/22779013/22774292 differences are cited as uncertainties without reconciliation. Code-evidenced links missing from Flow registration (price ingress full reload → `b:pricedumpfromoptimera`) are recorded as uncertainties; registrations were **not** modified. Layers are generated reproducibly by `drafts/build-layers-addenda-011.py` (hashes computed from file bytes).
+
+## Changelog
+- v1.1 (2026-11-06): Team Lead locks recorded (forest + API baseline, auto-layout first, positions deferred). Added customerproject func-app, func-app.domain-update (nested), api; price catalog with func-app, ingress-app, api, api.get-prices (nested), api-batch. Verifier extended to multi-project catalogs, real depth ≥ 2, V-008 and a 19th negative fixture.
+- v1 (2026-11-06): contract + ingress-app worked example.

@@ -1,0 +1,249 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.api-batch",
+  "project": "price",
+  "title": "Api.Batch \u2014 batch price queries (thin)",
+  "summary": "Thin layer: batch controllers delegate to the shared price reader batch paths. Kept deliberately coarse; see uncertainties.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:price.api-batch"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T11:30:00+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/price.dev.json",
+      "note": "price api-batch container.",
+      "confidence": "confirmed",
+      "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Api.Batch/V3/Controllers/PricesBatchController.cs",
+      "note": "Lines 16\u201330: batch prices via IPriceReader.",
+      "confidence": "confirmed",
+      "revision": "sha256:369fc35950486f4b6081ce1a96966281d079dc3e09f2d565c92838826c66de72"
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256 (Team Lead ruled HEAD check unnecessary).",
+    "Thin by design: internal batch reader logic was not reviewed in depth; treat as high uncertainty."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.api-batch.callers",
+      "label": "HTTP batch callers",
+      "kind": "external",
+      "responsibility": "Batch price clients.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Api.Batch/V3/Controllers/PricesBatchController.cs",
+          "note": "Lines 16\u201330: batch prices via IPriceReader.",
+          "confidence": "confirmed",
+          "revision": "sha256:369fc35950486f4b6081ce1a96966281d079dc3e09f2d565c92838826c66de72"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "price.api-batch.http handler.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [
+        "Clients not evidenced."
+      ]
+    },
+    {
+      "id": "comp:price.api-batch.controllers",
+      "label": "Batch price controllers",
+      "kind": "component",
+      "responsibility": "prices/batch, /batch/dsp and /batch/m3api get-prices endpoints.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Api.Batch/V3/Controllers/PricesBatchController.cs",
+          "note": "Lines 16\u201330: batch prices via IPriceReader.",
+          "confidence": "confirmed",
+          "revision": "sha256:369fc35950486f4b6081ce1a96966281d079dc3e09f2d565c92838826c66de72"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Api.Batch/V3/Controllers/PricesBatchDspController.cs",
+          "note": "Lines 17\u201331: batch DSP prices via IPriceReader.",
+          "confidence": "confirmed",
+          "revision": "sha256:acb0229eba6135f288d2e9c6fd02d4efcbf9f1818da906fd36a18324e3579450"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Api.Batch/V3/Controllers/PricesBatchM3ApiController.cs",
+          "note": "Lines 17\u201331: batch M3 API prices via IPriceReader.",
+          "confidence": "confirmed",
+          "revision": "sha256:5599c12318bd248d85f22b2d86e9e797b68e5cb20d60fa303f0a306f9067f3dd"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.api-batch.reader",
+      "label": "Batch price reading",
+      "kind": "component",
+      "responsibility": "Price reader batch paths (DSP batch reader or M3 API batch reader).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
+          "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+          "confidence": "confirmed",
+          "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceBatchReaderDsp.cs",
+          "note": "Batch DSP reader (uses price calculator).",
+          "confidence": "confirmed",
+          "revision": "sha256:7de98183068e3183e9e2e20c5a608bed1124f2e740514102c8568ad937382d9e"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/PriceBatchReaderM3Api.cs",
+          "note": "Batch M3 API reader.",
+          "confidence": "confirmed",
+          "revision": "sha256:eb2f3542abaa6f3b68642f4433a2926bf0447f6d8b5e983337005e5fcb06eb54"
+        }
+      ],
+      "uncertainties": [
+        "Batch strategy selection not traced line-by-line; assumed to reuse IPriceReader as the controllers inject it."
+      ]
+    },
+    {
+      "id": "comp:price.api-batch.price-db",
+      "label": "Price SQL (read)",
+      "kind": "store",
+      "responsibility": "Read-side price database.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Storage.Read/PriceDbReader.cs",
+          "note": "Read-side price SQL access used by price reading.",
+          "confidence": "confirmed",
+          "revision": "sha256:3b17ad4d16f7903b5c7b6d73237d7f2d42badc608394049ff073a86df57cb763"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price"
+    },
+    {
+      "id": "comp:price.api-batch.erp",
+      "label": "M3 price API",
+      "kind": "external",
+      "responsibility": "External ERP price endpoint.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Integrations.Erp/ErpPriceClient.cs",
+          "note": "Line 9: ERP price client wrapping IPriceClient.",
+          "confidence": "confirmed",
+          "revision": "sha256:14aac5c1ee566be7f6609ff55d5aad670521d6d254369381694ea737ff7a8c4e"
+        }
+      ],
+      "uncertainties": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.api-batch.http",
+      "from": "comp:price.api-batch.callers",
+      "to": "comp:price.api-batch.controllers",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Batch get-prices",
+      "description": "Requests.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Api.Batch/V3/Controllers/PricesBatchController.cs",
+          "note": "Lines 16\u201330: batch prices via IPriceReader.",
+          "confidence": "confirmed",
+          "revision": "sha256:369fc35950486f4b6081ce1a96966281d079dc3e09f2d565c92838826c66de72"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.api-batch.reader",
+      "from": "comp:price.api-batch.controllers",
+      "to": "comp:price.api-batch.reader",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "IPriceReader",
+      "description": "Injected.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Api.Batch/V3/Controllers/PricesBatchController.cs",
+          "note": "Lines 16\u201330: batch prices via IPriceReader.",
+          "confidence": "confirmed",
+          "revision": "sha256:369fc35950486f4b6081ce1a96966281d079dc3e09f2d565c92838826c66de72"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Api.Batch/V3/Controllers/PricesBatchDspController.cs",
+          "note": "Lines 17\u201331: batch DSP prices via IPriceReader.",
+          "confidence": "confirmed",
+          "revision": "sha256:acb0229eba6135f288d2e9c6fd02d4efcbf9f1818da906fd36a18324e3579450"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.api-batch.db",
+      "from": "comp:price.api-batch.reader",
+      "to": "comp:price.api-batch.price-db",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Prices",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceBatchReaderDsp.cs",
+          "note": "Batch DSP reader (uses price calculator).",
+          "confidence": "confirmed",
+          "revision": "sha256:7de98183068e3183e9e2e20c5a608bed1124f2e740514102c8568ad937382d9e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.api-batch.erp",
+      "from": "comp:price.api-batch.reader",
+      "to": "comp:price.api-batch.erp",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "M3 prices",
+      "description": "M3 batch path.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/PriceBatchReaderM3Api.cs",
+          "note": "Batch M3 API reader.",
+          "confidence": "confirmed",
+          "revision": "sha256:eb2f3542abaa6f3b68642f4433a2926bf0447f6d8b5e983337005e5fcb06eb54"
+        }
+      ],
+      "uncertainties": [
+        "Exact ERP call path in batch reader not traced."
+      ]
+    }
+  ]
+}

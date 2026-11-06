@@ -1,5 +1,5 @@
 # ADDENDA-011 — proposed UI/Developer handoff
-Status: Proposed; route implementation decisions through Team Lead. No runtime code or API deployed by this task.
+Status: **Accepted baseline (Team Lead 2026-11-06)**; route further implementation decisions through Team Lead. No runtime code or API deployed by this task.
 
 **Team Lead locked 2026-11-06:** forest + this API are the implementation baseline; **auto-layout first**; separate layer-position persistence **deferred**. These are implementation decisions, not deployment authorization.
 
@@ -55,3 +55,9 @@ Retain existing authenticated project read routes/policy and front-door upstream
 8. Before deployment (not authorized here), ensure read-only architecture files are included in the existing API artifact and available on box and Render paths; do not silently mix different catalogs across upstream fallback.
 
 Artifacts: ADDENDA-011-architecture-layers.md, architecture-layer.schema.json, layers/customerproject/{index,ingress-app}.json. Proposed design only, no endpoint implemented.
+
+## v1.1 content for implementation (2026-11-06)
+- Catalogs: `layers/customerproject/index.json` (4 layers) and `layers/price/index.json` (5 layers, registrationId `price.dev`).
+- Real multi-depth examples for breadcrumbs: Flow → Functions → "Apply ingress snapshots" (`layer:customerproject.func-app.domain-update`); Flow → price Api → "Price reading" (`layer:price.api.get-prices`).
+- Auto-layout only; no `apos:*` persistence yet. The same `flowEntityId` may appear on several nodes/layers (e.g. q:customerproject) — they are references, not separate runtime entities.
+- New fixture rule V-008: reject a layer where a boundary node both receives from and sends to the same component.

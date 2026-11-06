@@ -42,6 +42,13 @@ def check(cat, layers, reg=REG):
             require(edge['id'].startswith('aedge:' + cat['project'] + '.') and edge['id'] not in seen_edges, 'V-002 edge')
             seen_edges.add(edge['id'])
             require(edge['from'] in ids and edge['to'] in ids and edge['from'] != edge['to'], 'V-007 endpoint')
+        # V-008 (Flow v2 invariant): no boundary queue/topic both receives from and sends to the same component.
+        kinds = {x['id']: x for x in layer['nodes']}
+        for nid, node in kinds.items():
+            if node['boundary'] != 'outside': continue
+            ins = {e['from'] for e in layer['edges'] if e['to'] == nid}
+            outs = {e['to'] for e in layer['edges'] if e['from'] == nid}
+            require(not (ins & outs), 'V-008 bidirectional queue ' + nid)
     opens, roots = {}, set()
     scopes = {'local': {'local'}, 'cloud': {'cloud'}, 'both': {'local', 'cloud'}}
     containers = {x['id']: x for x in reg['containers']}
@@ -73,8 +80,21 @@ def check(cat, layers, reg=REG):
     return True
 
 check(CAT, LAYERS)
-# A valid three-layer synthetic forest exercises arbitrary-depth navigation.
-cat, layers = deepcopy(CAT), deepcopy(LAYERS)
+PREG = json.loads((BASE / 'registrations/price.dev.json').read_text())
+PCAT = json.loads((BASE / 'layers/price/index.json').read_text())
+PLAYERS = [json.loads((BASE / 'layers/price' / e['path']).read_text()) for e in PCAT['layers']]
+check(PCAT, PLAYERS, PREG)
+def forest_depth(ls):
+    by = {l['id']: l for l in ls}; best = 0
+    for l in ls:
+        d, cur = 1, l
+        while cur['parentLayerId']: cur = by[cur['parentLayerId']]; d += 1
+        best = max(best, d)
+    return best
+assert forest_depth(LAYERS) >= 2 and forest_depth(PLAYERS) >= 2, 'real multi-depth required'
+# A valid three-layer synthetic forest exercises arbitrary-depth navigation (built from the ingress worked example only).
+cat, layers = deepcopy(CAT), [deepcopy(LAYERS[0])]
+cat['layers'] = cat['layers'][:1]
 for depth in (2, 3):
     child = deepcopy(LAYERS[0]); old_ids = {n['id']: n['id'] + '.test' + str(depth) for n in child['nodes']}
     child['id'] += '.test' + str(depth)
@@ -111,6 +131,7 @@ bad('absolute path', lambda c,l: c['layers'][0].update(path='/etc/passwd'))
 bad('duplicate catalog path', lambda c,l: c['layers'][1].update(path=c['layers'][0]['path']))
 bad('live edge kind', lambda c,l: l[0]['edges'][0].update(kind='observed'))
 bad('empty evidence', lambda c,l: l[0]['nodes'][0].update(sources=[]))
+bad('bidirectional queue', lambda c,l: l[0]['edges'].append({**deepcopy(l[0]['edges'][0]), 'id': 'aedge:customerproject.ingress.back', 'from': l[0]['edges'][0]['to'], 'to': l[0]['edges'][0]['from']}))
 bad('inference without rationale', lambda c,l: l[0]['sources'].append({'kind':'inferred','ref':'dsp-customerproject/README.md','confidence':'inferred'}))
 
 # Validate existing registrations with their unchanged schema.
@@ -119,15 +140,17 @@ for filename in ('customerproject.dev.json', 'price.dev.json'):
     rs.validate(json.loads((BASE / 'registrations' / filename).read_text()))
 # Reviewed citations and stored per-file revisions resolve without network access.
 count = 0
-for item in [LAYERS[0], *LAYERS[0]['nodes'], *LAYERS[0]['edges']]:
+for item in [x for L_ in LAYERS + PLAYERS for x in [L_, *L_['nodes'], *L_['edges']]]:
     for source in item['sources']:
         if source['kind'] in ('repo', 'registration'):
             path = Path('/workspace/dsp') / source['ref']
             assert path.is_file(), path
             assert source['revision'] == 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest(), path
         elif source['kind'] == 'confluence':
-            assert source['ref'].rsplit('/',1)[1] in {'22779513','22779013','22774292'}
+            assert source['ref'].rsplit('/',1)[1] in {'22779513','22779013','22774292','22777574','22773861','22774388','22774149','22776628','22774078'}
         count += 1
-print('PASS schema (layer/catalog), unchanged customerproject+price registrations, semantic root + synthetic depth 3')
+print('PASS schema (layer/catalog), unchanged customerproject+price registrations')
+print('PASS real forests: customerproject', len(LAYERS), 'layers depth', forest_depth(LAYERS), '| price', len(PLAYERS), 'layers depth', forest_depth(PLAYERS), '| synthetic depth 3')
+print('PASS V-008 no bidirectional boundary node in any layer')
 print('PASS', len(cases), 'negative fixtures:', ', '.join(cases))
-print('PASS', count, 'citation occurrences: local file/hash checks + 3 actually opened Confluence page IDs')
+print('PASS', count, 'citation occurrences: local file/hash checks + 9 actually opened Confluence page IDs (3 customerproject + 6 price)')

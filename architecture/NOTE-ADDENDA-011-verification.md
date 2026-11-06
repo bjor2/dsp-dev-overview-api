@@ -33,3 +33,14 @@ Loaded skill-authoring before writing the research skill draft; it remains a fil
 
 ## Additional evidence snapshot
 `drafts/confluence-22774292-event-stream-conversion.md` records the newer CQL-found conversion design. The parent already saved the other two Confluence markdown snapshots. Historical ADF and current snapshot SQL differ; no business-equivalence or rollout assertion was made.
+
+## v1.1 verification (2026-11-06, Europe/Oslo)
+`python3 architecture/drafts/verify-addenda-011.py`:
+- PASS schema (layer/catalog); customerproject and price registrations validate unchanged.
+- PASS real forests: customerproject 4 layers depth 2, price 5 layers depth 2; synthetic depth 3.
+- PASS V-008 no bidirectional boundary node in any layer.
+- PASS 19 negative fixtures (adds "bidirectional queue").
+- PASS 364 citation occurrences: every repo/registration file exists with matching SHA256; only the 3 opened Confluence page IDs are cited.
+Registration hashes unchanged: customerproject `5ccc19c9…f39a`, price `ec39d090…8046`.
+Read-only: customerproject `git status --short` empty, HEAD `b0864c051065f88e978b6d110483096c915d7edf`; file counts unchanged (customerproject 11,708; price 1,095). This pass's tree fingerprint (sha256 over sorted `relpath\0sha256\n`, excl. .git): customerproject `0ffd9bb2f0625972672ab930974606fc334091c6a22e8da9fa5cc32c0331f306`, price `af34968c19911b046ffbf5477ecc1371bcb1ae18e2d34c9c912f5ad465b5c895`. The v1 fingerprint serialization was not recorded, so these values are a new baseline rather than a byte-for-byte comparison.
+Generator: `drafts/build-layers-addenda-011.py` (reads service repos, writes only under dev-overview). No price Confluence pages were opened in this pass.

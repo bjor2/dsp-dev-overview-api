@@ -1,0 +1,1083 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.func-app",
+  "project": "customerproject",
+  "title": "Functions \u2014 domain and command responsibilities",
+  "summary": "Inside the Functions compute container: DOMAIN applies Ingress snapshots, COMMANDS runs project, address, order-association, notification and import work. Queues, the topic, SQL, blob and external HTTP services are boundary dependencies. Arrows explain responsibilities, not execution order or observed events; handler self-requeues are badges.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:customerproject.func-app"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T11:30:00+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+      "note": "func-app container with DOMAIN and COMMANDS handlers.",
+      "confidence": "confirmed",
+      "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
+      "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
+      "confidence": "confirmed",
+      "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+      "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+      "confidence": "confirmed",
+      "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Program.cs",
+      "note": "Lines 67\u201380: Functions host registers messaging, domain queue client, storage, ERP, OrderHistory, Product, notification sender, application features and image storage.",
+      "confidence": "confirmed",
+      "revision": "sha256:ec2ba613bf7edd9471be5eddf0ea0bb5c30dbf65ecbb79ecff0d3be5326add78"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Configuration/ServiceCollectionExtensions.cs",
+      "note": "Lines 17\u201349: AddApplicationFeatures (Functions) vs AddApiApplicationFeatures (API); CustomerProjectService and ManualAssociationService are registered only for the API.",
+      "confidence": "confirmed",
+      "revision": "sha256:aee0f35199a16fc68fa3f58c33d7d5af4ef724d3f687f97326923aa1269d3f21"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779513",
+      "revision": "version:4",
+      "confidence": "confirmed",
+      "note": "2023 workshop domain context (project vs delivery address, CUNO/ADID). Not implementation evidence."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779013",
+      "revision": "version:6",
+      "confidence": "confirmed",
+      "note": "Historical upstream ADF/M3 address and HasProjectPrice analysis; not evidence of current in-process behaviour."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774292",
+      "revision": "version:13",
+      "confidence": "confirmed",
+      "note": "2024 conversion design: PICo/Table Event streams for CustomerAddress and ProjectWithPrice; design intent, not deployment proof."
+    }
+  ],
+  "uncertainties": [
+    "Local source HEAD b0864c051065f88e978b6d110483096c915d7edf at review (clean); deployment freshness unknown. Per-file hashes identify reviewed evidence.",
+    "Confluence 22774292 (v13) describes the event-stream conversion that produces these snapshots; it does not prove rollout. Confluence 22779013 (v6) HasProjectPrice logic is historical ADF analysis and differs from current snapshot handling; no reconciliation is asserted.",
+    "Confluence 22779513 (v4) frames project vs delivery address; current code creates projects only for NEW Delivery-type addresses (UpdateCustomerAddressFromSnapshotHandler lines 47\u201360). Whether that matches business intent is unverified.",
+    "Dahl.Core MessageHandler retry/claim-check semantics (HandleWithRetry, HandleOnce, short in-process retry) are outside reviewed source; no retry topology is drawn.",
+    "CustomerProjectService (ERP-backed create/update) is registered only in the API host, not in Functions (Application ServiceCollectionExtensions lines 17\u201349)."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.func.domain-input",
+      "label": "Domain update queue",
+      "kind": "external",
+      "responsibility": "Boundary input carrying UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot from Ingress SNAPSHOT.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
+          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
+          "confidence": "confirmed",
+          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "q:customerproject-domain triggers customerproject.fn.domain.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "q:customerproject-domain"
+    },
+    {
+      "id": "comp:customerproject.func.snapshot-apply",
+      "label": "Apply ingress snapshots (DOMAIN)",
+      "kind": "component",
+      "responsibility": "Applies address and project-price snapshots to domain storage and decides whether project work is needed. Open for the snapshot-apply sub-layer.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
+          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
+          "confidence": "confirmed",
+          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateProjectWithPriceFromSnapshotHandler.cs",
+          "note": "Lines 16\u201334: save ProjectWithPrice from snapshot; comment states no CustomerProjectChanged publish is needed.",
+          "confidence": "confirmed",
+          "revision": "sha256:39b722193830ee568568cf3abae5de5cadc3e1a35d84e0a3b435a936be8b3e4c"
+        }
+      ],
+      "uncertainties": [],
+      "opensLayerId": "layer:customerproject.func-app.domain-update"
+    },
+    {
+      "id": "comp:customerproject.func.command-input",
+      "label": "Command queue",
+      "kind": "external",
+      "responsibility": "Boundary input for COMMANDS: commands from DOMAIN, the API, operators/seed kit, and handlers that requeue follow-up work. Requeue from a handler to this same queue is shown as a self-requeue badge, not as an arrow back.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Messaging/CustomerProjectQueueClient.cs",
+          "note": "Lines 14\u201318: queue sender configured by CustomerProjectQueue.",
+          "confidence": "confirmed",
+          "revision": "sha256:4e41e9122e32bd1c1eebc082ddc49d494ece9bc3fc687eb408a4ac7928f98c65"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "q:customerproject triggers customerproject.fn.commands; fn.domain and api.http publish to it.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [
+        "Which handlers requeue which subjects is described per component; Flow v2 renders this as a badge on COMMANDS."
+      ],
+      "owner": "customerproject",
+      "flowEntityId": "q:customerproject"
+    },
+    {
+      "id": "comp:customerproject.func.project-lifecycle",
+      "label": "Project creation and date sync",
+      "kind": "component",
+      "responsibility": "Creates projects from ERP delivery-address references, keeps project dates aligned with address dates, and backfills missing projects. Publishes CustomerProjectChanged; self-requeues PopulateOrderReferences / CreateProjectsFromErpReferences / HandleCustomerAddressChanged (badge).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35\u201389: create project per ErpReference if missing, publish CustomerProjectChanged, requeue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+          "note": "Lines 34\u201369: sync project dates from address, requeue PopulateOrderReferences when project becomes active, publish CustomerProjectChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateMissingProjectsHandler.cs",
+          "note": "Lines 33\u201364: find addresses without project and requeue CreateProjectsFromErpReferences batches.",
+          "confidence": "confirmed",
+          "revision": "sha256:3f7f2646796f455372029f5615ed198218577933e68bd94fb93594723a510d60"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/SyncProjectDatesHandler.cs",
+          "note": "Lines 31\u201355: find projects whose dates differ from address and requeue HandleCustomerAddressChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:f9034246830add085d4326c833b2eb2d24bdb0abc0cbc69d056bb4cd5744bc45"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.func.address-upsert",
+      "label": "Customer address upsert",
+      "kind": "component",
+      "responsibility": "Validates UpsertCustomerAddress commands, creates or updates the address in ERP (computing candidate address ids), then stores it locally.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+          "note": "Lines 28\u201362: validate, create/upsert address in ERP, then upsert locally.",
+          "confidence": "confirmed",
+          "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/ErpAddress/ErpAddressService.cs",
+          "note": "Lines 20\u201372: candidate AddressId calculation, ERP create/update via IErpCustomerAddressClient.",
+          "confidence": "confirmed",
+          "revision": "sha256:edbd5e6e72746764f41517746fba551c8fc2ec5ece9fa855b94dbec422ff18f1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.func.order-association",
+      "label": "Order association",
+      "kind": "component",
+      "responsibility": "Associates ERP orders with projects from OrderHistory and on OrderAddressIdChanged; stores OrderReferences and publishes CustomerProjectOrderReferenceChanged. Self-requeues PopulateOrderReferences per project (badge).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ImportOrderReferences.cs",
+          "note": "Lines 35\u201360 and 60\u2013184: requeue PopulateOrderReferences per project; fetch OrderHistory, upsert OrderReference, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:0a5eb5fab1a535c5614d932e1e6a0ba71b7c6f70b3e153df53d4240bf1f08941"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/OrderAddressIdChangedHandler.cs",
+          "note": "Lines 32\u2013135: re-associate order on address change; upsert OrderReference; publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:fccd17dc5abd196dc903ff69aaaf501ea7a2b6db13cba92e316c0bae1fc63056"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.func.notification",
+      "label": "Order notification",
+      "kind": "component",
+      "responsibility": "Turns order-reference changes and OrderDelivered into ValidateOrder, validates the order against the project, and emits email/SMS SendNotification requests to the communication service. ValidateOrder and SendNotification are self-requeued (badge).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/OrderReferenceChangedHandler.cs",
+          "note": "Lines 21\u201326: CustomerProjectOrderReferenceChanged -> requeue ValidateOrder.",
+          "confidence": "confirmed",
+          "revision": "sha256:c8a2ae8448cebaa0bbfd7857dbb8a7de81dbcd3e9eb3421e344cab6c517788da"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/OrderDeliveredHandler.cs",
+          "note": "Lines 25\u201334: OrderDelivered -> requeue ValidateOrder.",
+          "confidence": "confirmed",
+          "revision": "sha256:bfef36a49385b2b51090babae94d1517aa9da72b34b4a2504f2043dfec61d033"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/ValidateOrderHandler.cs",
+          "note": "Lines 34\u201390: look up project by order, validate for notification, requeue SendNotification (email now, SMS scheduled).",
+          "confidence": "confirmed",
+          "revision": "sha256:2ff85202e08c8a25137cc47a2897b20db29e57e0836ccaa603a791adde01a158"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/ProjectOrderValidatorService.cs",
+          "note": "Lines 26\u201344: read OrderHistory order and Product catalog products.",
+          "confidence": "confirmed",
+          "revision": "sha256:62c3ce25386602d4733bb3e6054b986343eaa3c12b0e0fe63a9c7ec9308ac1a0"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/SendNotificationHandler.cs",
+          "note": "Lines 20\u201322: SendNotification -> INotificationSender.",
+          "confidence": "confirmed",
+          "revision": "sha256:f519ce866e067be0cf21131f1e588f918aa75d45aea866863cd5edeeb38f0e2f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Communication/NotificationSender.cs",
+          "note": "Lines 39\u201364: choose email/SMS message factory and send via communication queue client.",
+          "confidence": "confirmed",
+          "revision": "sha256:ddbfbde94542e6ca3ab46007e908032ec4acf2ac5c6cee2f79c35274dacd1813"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.func.image-import",
+      "label": "Project/image import",
+      "kind": "component",
+      "responsibility": "Imports projects, contact lists and images from import commands (migration-style data load).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/Migration/ImportProjectService.cs",
+          "note": "Lines 37\u2013132: ImportCustomerProjects / ImportProjectContactsList migration import into storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:2a2cc51bda836231bd14e4a16d572bd424ef1fb1a6a9a7afd7f26fcce723f0c9"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/ImportProjectImageService.cs",
+          "note": "Lines 21\u201333: ImportImage command -> image service upload.",
+          "confidence": "confirmed",
+          "revision": "sha256:d9ad2c385f963d6bc48dd5fd9ce113ae445cbbcb6e048d42dec9e6325ae19878"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/CustomerProjectImageService.cs",
+          "note": "Lines 18\u201375: read/upload/remove project images: blob via IImageStorage, metadata via storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:525fd5803498731be870f0fae8acbd7d7701b81ffe88da10dba5e468fc52c391"
+        }
+      ],
+      "uncertainties": [
+        "Migration namespace suggests one-off data load; current operational use is not evidenced."
+      ]
+    },
+    {
+      "id": "comp:customerproject.func.storage",
+      "label": "CustomerProject SQL storage",
+      "kind": "store",
+      "responsibility": "Projects, customer addresses, ProjectWithPrice, OrderReferences, images metadata and snapshot bookkeeping (EF). Physical hosting not asserted.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Storage/CustomerProjectStorageDbContext.cs",
+          "note": "EF DbContext for CustomerProject SQL storage; no connection values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:040140df0013f7b43f5b5a1c14ebdedacb69e06448e1511a096393df3c972a98"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Storage/Migrations/20240528125402_CustomerAddressAndProjectWithPriceAsSnapshotDestinations.cs",
+          "note": "Migration making CustomerAddress and ProjectWithPrice snapshot destinations.",
+          "confidence": "confirmed",
+          "revision": "sha256:0d29c3d64f437a6d70681b5e1d63ac5ba90ac6cd598aa5c3d2784c559b36258e"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Storage/Migrations/20240529083503_SnapshotBookkeeping.cs",
+          "note": "Migration adding snapshot bookkeeping storage used by snapshot destinations.",
+          "confidence": "confirmed",
+          "revision": "sha256:46de557acb6b007e02ab6be99b50736374da85ace65e5588dc70d5c1cd49932c"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject"
+    },
+    {
+      "id": "comp:customerproject.func.topic",
+      "label": "CustomerProject topic",
+      "kind": "external",
+      "responsibility": "Boundary output for CustomerProjectChanged and CustomerProjectOrderReferenceChanged events to subscribers (including dsp-price and, in cloud, this service).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Messaging/CustomerProjectTopicClient.cs",
+          "note": "Lines 16\u201322: topic sender configured by CustomerProjectTopic.",
+          "confidence": "confirmed",
+          "revision": "sha256:b48d4c7ad3a27592d873cb9556ea06d4ff64fc91820475e664785fd8b33fa642"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35\u201389: create project per ErpReference if missing, publish CustomerProjectChanged, requeue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ImportOrderReferences.cs",
+          "note": "Lines 35\u201360 and 60\u2013184: requeue PopulateOrderReferences per project; fetch OrderHistory, upsert OrderReference, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:0a5eb5fab1a535c5614d932e1e6a0ba71b7c6f70b3e153df53d4240bf1f08941"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "fn.commands publishes PCO events to t:customerproject-topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject",
+      "flowEntityId": "t:customerproject-topic"
+    },
+    {
+      "id": "comp:customerproject.func.communication",
+      "label": "Communication queue",
+      "kind": "external",
+      "responsibility": "Boundary output: SendEmail/SendSms messages for the communication service, which is outside this repo.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Communication/Client/CommunicationQueueClient.cs",
+          "note": "Lines 14\u201343: sender bound to ServiceBusCommunicationQueue setting.",
+          "confidence": "confirmed",
+          "revision": "sha256:de25a2eb40d83634a89ce6b2317273117cb7282de8373268392abf38bb8934b8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Communication/NotificationSender.cs",
+          "note": "Lines 39\u201364: choose email/SMS message factory and send via communication queue client.",
+          "confidence": "confirmed",
+          "revision": "sha256:ddbfbde94542e6ca3ab46007e908032ec4acf2ac5c6cee2f79c35274dacd1813"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "fn.commands publishes notifications to q:communication.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:communication"
+    },
+    {
+      "id": "comp:customerproject.func.erp",
+      "label": "ERP customer-address API",
+      "kind": "external",
+      "responsibility": "External M3 ERP customer-address create/lookup/update endpoint.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Erp/ErpCustomerAddressClient.cs",
+          "note": "Lines 29\u2013126: ERP customer-address create, existing-id lookup and update calls.",
+          "confidence": "confirmed",
+          "revision": "sha256:b7fd4acb31aab3c3f01475746e0c9d2acc55e6a34d5cf2f02d2a3a8a112ed6b8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Program.cs",
+          "note": "Lines 67\u201380: Functions host registers messaging, domain queue client, storage, ERP, OrderHistory, Product, notification sender, application features and image storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec2ba613bf7edd9471be5eddf0ea0bb5c30dbf65ecbb79ecff0d3be5326add78"
+        }
+      ],
+      "uncertainties": [
+        "Endpoint identity and auth are configuration-driven and not recorded here."
+      ]
+    },
+    {
+      "id": "comp:customerproject.func.order-history",
+      "label": "OrderHistory service",
+      "kind": "external",
+      "responsibility": "External HTTP order history used for association and notification validation.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.OrderHistory/OrderHistoryClient.cs",
+          "note": "Lines 13\u201369: HTTP OrderHistory client (by order id, or by customer + ERP address).",
+          "confidence": "confirmed",
+          "revision": "sha256:97d7b5490161085996aa016eef45ddca230a296a8fa7796dd261abc46f0ece86"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Program.cs",
+          "note": "Lines 67\u201380: Functions host registers messaging, domain queue client, storage, ERP, OrderHistory, Product, notification sender, application features and image storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec2ba613bf7edd9471be5eddf0ea0bb5c30dbf65ecbb79ecff0d3be5326add78"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.func.product-catalog",
+      "label": "Product catalog service",
+      "kind": "external",
+      "responsibility": "External HTTP product lookup used during notification validation.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Product/ProductClient.cs",
+          "note": "Lines 12\u201323: HTTP product catalog client.",
+          "confidence": "confirmed",
+          "revision": "sha256:1d8e57a21801b4b900c93d7818f504708d05e93ea3945669cb687d7810442e9c"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/ProjectOrderValidatorService.cs",
+          "note": "Lines 26\u201344: read OrderHistory order and Product catalog products.",
+          "confidence": "confirmed",
+          "revision": "sha256:62c3ce25386602d4733bb3e6054b986343eaa3c12b0e0fe63a9c7ec9308ac1a0"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.func.image-blob",
+      "label": "Image blob storage",
+      "kind": "store",
+      "responsibility": "Azure Blob container holding processed project images.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Images/BlobStorage/BlobStorageClient.cs",
+          "note": "Lines 8\u201376: Azure Blob container client download/upload/delete.",
+          "confidence": "confirmed",
+          "revision": "sha256:f4d1964367af090842ddeb86cd9a35a72d54d52f20b2acca19f0e9f62070c0b3"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Images/ImageStorage.cs",
+          "note": "Lines 18\u201351: processes (checksum/metadata strip) and uploads/removes blobs.",
+          "confidence": "confirmed",
+          "revision": "sha256:3446c03abd16465f0a3f996b595ab1451e2c4c127998ab55c7a08582f180a1a1"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "customerproject"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.func.domain-in",
+      "from": "comp:customerproject.func.domain-input",
+      "to": "comp:customerproject.func.snapshot-apply",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Snapshot update commands",
+      "description": "Two subject families from Ingress SNAPSHOT.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectDomainQueueHandler.cs",
+          "note": "Lines 31\u201356: DOMAIN trigger; UpdateCustomerAddressFromSnapshot and UpdateProjectWithPriceFromSnapshot subjects; unknown subjects are logged and discarded.",
+          "confidence": "confirmed",
+          "revision": "sha256:f79fe2552a1f8139776c67c65b2aee7a6232f3dd4937968d1fc4fb34624575fe"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.snapshot-store",
+      "from": "comp:customerproject.func.snapshot-apply",
+      "to": "comp:customerproject.func.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Address / ProjectWithPrice rows",
+      "description": "Snapshot destinations with bookkeeping.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 21\u201336 and 81\u2013106: Dahl.Core ImportStorableEntityFromSnapshotBase with bookkeeping + storable-entity storage; composite key lookup.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateProjectWithPriceFromSnapshotHandler.cs",
+          "note": "Lines 16\u201334: save ProjectWithPrice from snapshot; comment states no CustomerProjectChanged publish is needed.",
+          "confidence": "confirmed",
+          "revision": "sha256:39b722193830ee568568cf3abae5de5cadc3e1a35d84e0a3b435a936be8b3e4c"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.snapshot-commands",
+      "from": "comp:customerproject.func.snapshot-apply",
+      "to": "comp:customerproject.func.command-input",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Create / address-changed commands",
+      "description": "CreateProjectsFromErpReferences (new delivery address) or HandleCustomerAddressChanged.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/UpdateFromIngressSnapshot/UpdateCustomerAddressFromSnapshotHandler.cs",
+          "note": "Lines 41\u201371: save address from snapshot; new Delivery address -> CreateProjectsFromErpReferences, modified address -> HandleCustomerAddressChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:453250390d96b88f609858223b7257ece423827785718bd4646d2519663fe326"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.cmd-lifecycle",
+      "from": "comp:customerproject.func.command-input",
+      "to": "comp:customerproject.func.project-lifecycle",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Project commands",
+      "description": "CreateProjectsFromErpReferences, HandleCustomerAddressChanged, CreateMissingProjects, SyncProjectDates.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.cmd-upsert",
+      "from": "comp:customerproject.func.command-input",
+      "to": "comp:customerproject.func.address-upsert",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "UpsertCustomerAddress",
+      "description": "Address upsert command.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.cmd-orders",
+      "from": "comp:customerproject.func.command-input",
+      "to": "comp:customerproject.func.order-association",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Order-reference commands",
+      "description": "PopulateOrderReferences, ImportOrderReferencesForProjects, OrderAddressIdChanged.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.cmd-notify",
+      "from": "comp:customerproject.func.command-input",
+      "to": "comp:customerproject.func.notification",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Order/notification messages",
+      "description": "CustomerProjectOrderReferenceChanged, OrderDelivered, ValidateOrder, SendNotification.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.cmd-import",
+      "from": "comp:customerproject.func.command-input",
+      "to": "comp:customerproject.func.image-import",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Import commands",
+      "description": "ImportCustomerProjects, ImportProjectContactsList, ImportImage.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Functions/Functions/CustomerProjectQueueHandler.cs",
+          "note": "Lines 129\u2013257: COMMANDS trigger; 14 subject cases (upsert, order validation/notification, imports, project creation/sync, order-reference events); unknown subjects throw.",
+          "confidence": "confirmed",
+          "revision": "sha256:e237c199519db1bcfd606c450601ce3f1145bae82745c25dd0d8b57d9d605751"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.lifecycle-store",
+      "from": "comp:customerproject.func.project-lifecycle",
+      "to": "comp:customerproject.func.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Projects",
+      "description": "Reads addresses, upserts projects.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35\u201389: create project per ErpReference if missing, publish CustomerProjectChanged, requeue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+          "note": "Lines 34\u201369: sync project dates from address, requeue PopulateOrderReferences when project becomes active, publish CustomerProjectChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.lifecycle-topic",
+      "from": "comp:customerproject.func.project-lifecycle",
+      "to": "comp:customerproject.func.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CustomerProjectChanged",
+      "description": "Published after create/date change.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CreateFromErpReferenceHandler.cs",
+          "note": "Lines 35\u201389: create project per ErpReference if missing, publish CustomerProjectChanged, requeue PopulateOrderReferences.",
+          "confidence": "confirmed",
+          "revision": "sha256:87813cfa20166efcd5e83362da1e7dc32440f0c0a161ea8f9ff7a82499bd777f"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerProject/CustomerAddressChangedHandler.cs",
+          "note": "Lines 34\u201369: sync project dates from address, requeue PopulateOrderReferences when project becomes active, publish CustomerProjectChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:67a9ca94325b7d02414baf2653585f4f131982fb81f27e1c4bbe48c8a790ca4b"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.upsert-erp",
+      "from": "comp:customerproject.func.address-upsert",
+      "to": "comp:customerproject.func.erp",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Create/update address",
+      "description": "ERP is authoritative for address ids.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/ErpAddress/ErpAddressService.cs",
+          "note": "Lines 20\u201372: candidate AddressId calculation, ERP create/update via IErpCustomerAddressClient.",
+          "confidence": "confirmed",
+          "revision": "sha256:edbd5e6e72746764f41517746fba551c8fc2ec5ece9fa855b94dbec422ff18f1"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Erp/ErpCustomerAddressClient.cs",
+          "note": "Lines 29\u2013126: ERP customer-address create, existing-id lookup and update calls.",
+          "confidence": "confirmed",
+          "revision": "sha256:b7fd4acb31aab3c3f01475746e0c9d2acc55e6a34d5cf2f02d2a3a8a112ed6b8"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.upsert-store",
+      "from": "comp:customerproject.func.address-upsert",
+      "to": "comp:customerproject.func.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Customer addresses",
+      "description": "Local upsert after ERP call.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Upsert/CustomerAddress/UpsertCustomerAddressHandler.cs",
+          "note": "Lines 28\u201362: validate, create/upsert address in ERP, then upsert locally.",
+          "confidence": "confirmed",
+          "revision": "sha256:a5f0964e27129b751c23af66575a234df565728ccdfcf5e18662dc6c23ab52c4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.orders-history",
+      "from": "comp:customerproject.func.order-association",
+      "to": "comp:customerproject.func.order-history",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Orders by customer/address",
+      "description": "Source of candidate orders.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ImportOrderReferences.cs",
+          "note": "Lines 35\u201360 and 60\u2013184: requeue PopulateOrderReferences per project; fetch OrderHistory, upsert OrderReference, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:0a5eb5fab1a535c5614d932e1e6a0ba71b7c6f70b3e153df53d4240bf1f08941"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.OrderHistory/OrderHistoryClient.cs",
+          "note": "Lines 13\u201369: HTTP OrderHistory client (by order id, or by customer + ERP address).",
+          "confidence": "confirmed",
+          "revision": "sha256:97d7b5490161085996aa016eef45ddca230a296a8fa7796dd261abc46f0ece86"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.orders-store",
+      "from": "comp:customerproject.func.order-association",
+      "to": "comp:customerproject.func.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "OrderReferences",
+      "description": "Upsert order references.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ImportOrderReferences.cs",
+          "note": "Lines 35\u201360 and 60\u2013184: requeue PopulateOrderReferences per project; fetch OrderHistory, upsert OrderReference, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:0a5eb5fab1a535c5614d932e1e6a0ba71b7c6f70b3e153df53d4240bf1f08941"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/OrderAddressIdChangedHandler.cs",
+          "note": "Lines 32\u2013135: re-associate order on address change; upsert OrderReference; publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:fccd17dc5abd196dc903ff69aaaf501ea7a2b6db13cba92e316c0bae1fc63056"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.orders-topic",
+      "from": "comp:customerproject.func.order-association",
+      "to": "comp:customerproject.func.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CustomerProjectOrderReferenceChanged",
+      "description": "Published when an order reference changes.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/ImportOrderReferences.cs",
+          "note": "Lines 35\u201360 and 60\u2013184: requeue PopulateOrderReferences per project; fetch OrderHistory, upsert OrderReference, publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:0a5eb5fab1a535c5614d932e1e6a0ba71b7c6f70b3e153df53d4240bf1f08941"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/OrderAssociation/OrderAddressIdChangedHandler.cs",
+          "note": "Lines 32\u2013135: re-associate order on address change; upsert OrderReference; publish CustomerProjectOrderReferenceChanged.",
+          "confidence": "confirmed",
+          "revision": "sha256:fccd17dc5abd196dc903ff69aaaf501ea7a2b6db13cba92e316c0bae1fc63056"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.notify-history",
+      "from": "comp:customerproject.func.notification",
+      "to": "comp:customerproject.func.order-history",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Order by id",
+      "description": "Validation input.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/ProjectOrderValidatorService.cs",
+          "note": "Lines 26\u201344: read OrderHistory order and Product catalog products.",
+          "confidence": "confirmed",
+          "revision": "sha256:62c3ce25386602d4733bb3e6054b986343eaa3c12b0e0fe63a9c7ec9308ac1a0"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.notify-product",
+      "from": "comp:customerproject.func.notification",
+      "to": "comp:customerproject.func.product-catalog",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Products",
+      "description": "Validation input.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/ProjectOrderValidatorService.cs",
+          "note": "Lines 26\u201344: read OrderHistory order and Product catalog products.",
+          "confidence": "confirmed",
+          "revision": "sha256:62c3ce25386602d4733bb3e6054b986343eaa3c12b0e0fe63a9c7ec9308ac1a0"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.notify-store",
+      "from": "comp:customerproject.func.notification",
+      "to": "comp:customerproject.func.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Project by order",
+      "description": "Read only.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/ValidateOrderHandler.cs",
+          "note": "Lines 34\u201390: look up project by order, validate for notification, requeue SendNotification (email now, SMS scheduled).",
+          "confidence": "confirmed",
+          "revision": "sha256:2ff85202e08c8a25137cc47a2897b20db29e57e0836ccaa603a791adde01a158"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.notify-comm",
+      "from": "comp:customerproject.func.notification",
+      "to": "comp:customerproject.func.communication",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "SendEmail / SendSms",
+      "description": "Email immediately; SMS scheduled per business hours.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Communication/NotificationSender.cs",
+          "note": "Lines 39\u201364: choose email/SMS message factory and send via communication queue client.",
+          "confidence": "confirmed",
+          "revision": "sha256:ddbfbde94542e6ca3ab46007e908032ec4acf2ac5c6cee2f79c35274dacd1813"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Integrations.Communication/Client/CommunicationQueueClient.cs",
+          "note": "Lines 14\u201343: sender bound to ServiceBusCommunicationQueue setting.",
+          "confidence": "confirmed",
+          "revision": "sha256:de25a2eb40d83634a89ce6b2317273117cb7282de8373268392abf38bb8934b8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Notification/ValidateOrderHandler.cs",
+          "note": "Lines 34\u201390: look up project by order, validate for notification, requeue SendNotification (email now, SMS scheduled).",
+          "confidence": "confirmed",
+          "revision": "sha256:2ff85202e08c8a25137cc47a2897b20db29e57e0836ccaa603a791adde01a158"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.import-store",
+      "from": "comp:customerproject.func.image-import",
+      "to": "comp:customerproject.func.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Imported projects / image rows",
+      "description": "Import writes.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/Migration/ImportProjectService.cs",
+          "note": "Lines 37\u2013132: ImportCustomerProjects / ImportProjectContactsList migration import into storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:2a2cc51bda836231bd14e4a16d572bd424ef1fb1a6a9a7afd7f26fcce723f0c9"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/CustomerProjectImageService.cs",
+          "note": "Lines 18\u201375: read/upload/remove project images: blob via IImageStorage, metadata via storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:525fd5803498731be870f0fae8acbd7d7701b81ffe88da10dba5e468fc52c391"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.import-blob",
+      "from": "comp:customerproject.func.image-import",
+      "to": "comp:customerproject.func.image-blob",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Image files",
+      "description": "Processed upload.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Application/Features/Images/CustomerProjectImageService.cs",
+          "note": "Lines 18\u201375: read/upload/remove project images: blob via IImageStorage, metadata via storage.",
+          "confidence": "confirmed",
+          "revision": "sha256:525fd5803498731be870f0fae8acbd7d7701b81ffe88da10dba5e468fc52c391"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Images/ImageStorage.cs",
+          "note": "Lines 18\u201351: processes (checksum/metadata strip) and uploads/removes blobs.",
+          "confidence": "confirmed",
+          "revision": "sha256:3446c03abd16465f0a3f996b595ab1451e2c4c127998ab55c7a08582f180a1a1"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.func.topic-forward",
+      "from": "comp:customerproject.func.topic",
+      "to": "comp:customerproject.func.command-input",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "CustomerProjectOrderReferenceChanged (cloud)",
+      "description": "Cloud subscription customerproject-to-customerproject forwards this event back to the command queue.",
+      "sources": [
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/customerproject.dev.json",
+          "note": "s:customerproject-topic/customerproject-to-customerproject forwards to q:customerproject, cloud scope only.",
+          "confidence": "confirmed",
+          "revision": "sha256:5ccc19c9751934139e195b0c50121ce1b95af6fea5a3d934fc5de6308571f39a"
+        }
+      ],
+      "uncertainties": [
+        "Registered as cloud-scope only; locally the topic forwards to an inspect queue instead."
+      ]
+    }
+  ]
+}

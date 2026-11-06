@@ -1,5 +1,13 @@
 # ADDENDA-011 — architecture layer API contract (as implemented)
-Status: implemented on `feat/arch-layers`, local only. Not pushed or deployed. Implements NOTE-ADDENDA-011-ui-developer "Wire proposal" against ADDENDA-011 §2–§7.
+Status: implemented on `feat/arch-layers`, local only. Not pushed or deployed. Implements NOTE-ADDENDA-011-ui-developer "Wire proposal" against ADDENDA-011 §2–§7, with the v1.1 catalogs from §10.
+
+## Catalogs served (v1.1)
+| Project | Roots (index order) | Nested children |
+|---|---|---|
+| `customerproject.dev` | `layer:customerproject.api`, `layer:customerproject.func-app`, `layer:customerproject.ingress-app` | `layer:customerproject.func-app.domain-update` (opened by `comp:customerproject.func.snapshot-apply`) |
+| `price.dev` | `layer:price.api`, `layer:price.api-batch`, `layer:price.func-app`, `layer:price.ingress-app` | `layer:price.api.get-prices` (opened by `comp:price.api.price-reader`) |
+
+Every Flow container in both registrations has exactly one container-bound root. No handler-bound roots exist yet.
 
 All routes are read-only, anonymous like the rest of `/api`, and live under the existing project namespace. Errors use the usual envelope `{"error":{"code","message","retryable"}}`. Messages never contain machine paths or stack traces.
 
@@ -8,32 +16,40 @@ All routes are read-only, anonymous like the rest of `/api`, and live under the 
 {
   "projectId": "customerproject.dev",
   "schemaVersion": 1,
-  "roots": [{
-    "layerId": "layer:customerproject.ingress-app",
-    "title": "Ingress — import and snapshot responsibilities",
-    "flowRef": { "containerId": "container:customerproject.ingress-app" }
-  }],
+  "roots": [
+    { "layerId": "layer:customerproject.api", "title": "Api — HTTP entry points and their responsibilities",
+      "flowRef": { "containerId": "container:customerproject.api" } },
+    { "layerId": "layer:customerproject.func-app", "title": "Functions — domain and command responsibilities",
+      "flowRef": { "containerId": "container:customerproject.func-app" } },
+    { "layerId": "layer:customerproject.ingress-app", "title": "Ingress — import and snapshot responsibilities",
+      "flowRef": { "containerId": "container:customerproject.ingress-app" } }
+  ],
   "warnings": []
 }
 ```
-- `roots` lists root layers only (sorted by `layerId`). Descendants are reached through `children` on the layer route.
+- `roots` lists root layers only (sorted ordinally by `layerId`, so `layer:price.api` comes before `layer:price.api-batch`). Descendants such as `func-app.domain-update` are never listed here. They are reached through `children` on the layer route.
 - `flowRef.handlerId` appears only for a handler-bound root.
-- No catalog for the project (e.g. `price.dev` today): `200`, `roots: []`, `warnings: []`.
+- No catalog for the project (no `architecture/layers/{project}/` folder): `200`, `roots: []`, `warnings: []`. Both registered projects have a catalog now, so this only happens for a new project or a layers root without that folder.
 - Invalid catalog: `200`, `roots: []`, `warnings: ["ARCHITECTURE_INVALID: …"]`.
 - Unknown project: `404 PROJECT_NOT_FOUND`.
 
 ## `GET /api/projects/{id}/architecture/layer?layerId=<url-encoded id>`
+Nested example, `layerId=layer:customerproject.func-app.domain-update`:
 ```jsonc
 {
   "projectId": "customerproject.dev",
   "schemaVersion": 1,
-  "layer": { /* the authored layer document, validated, minus "$schema" */ },
-  "rootFlowRef": { "containerId": "container:customerproject.ingress-app" },
-  "breadcrumbs": [{ "layerId": "layer:customerproject.ingress-app", "title": "Ingress — import and snapshot responsibilities" }],
+  "layer": { /* the authored layer document, validated, minus "$schema"; no flowRef of its own */ },
+  "rootFlowRef": { "containerId": "container:customerproject.func-app" },
+  "breadcrumbs": [
+    { "layerId": "layer:customerproject.func-app", "title": "Functions — domain and command responsibilities" },
+    { "layerId": "layer:customerproject.func-app.domain-update", "title": "DOMAIN — applying ingress snapshots" }
+  ],
   "children": [],
   "warnings": []
 }
 ```
+Its parent (`layerId=layer:customerproject.func-app`) answers `"children": [{ "layerId": "layer:customerproject.func-app.domain-update", "title": "DOMAIN — applying ingress snapshots", "openedByNodeId": "comp:customerproject.func.snapshot-apply" }]`. Price is the same shape: `layer:price.api.get-prices` has breadcrumbs `price.api → price.api.get-prices` and `rootFlowRef` `container:price.api`.
 - `breadcrumbs`: forest root → current layer, inclusive, derived from `parentLayerId`. The UI prepends its own Flow crumb from `projectId` + `rootFlowRef`. Up/Back follows `breadcrumbs[-2]`, not browser history.
 - `rootFlowRef`: inherited from the forest root for every depth. Descendant documents have no `flowRef` of their own.
 - `children`: `{layerId, title, openedByNodeId}` for each direct child, sorted by `layerId`. `openedByNodeId` is the inside component in `layer.nodes` that carries the matching `opensLayerId`, so "click node → open child" and the child list always agree.
@@ -49,7 +65,7 @@ All routes are read-only, anonymous like the rest of `/api`, and live under the 
 The id is looked up only in the in-memory validated catalog. Paths, basenames (`ingress-app.json`), traversal (`../…`), absolute paths and other projects' ids all return `404 ARCHITECTURE_LAYER_NOT_FOUND`, and the message does not echo the id back.
 
 ## `GET /api/projects/{id}/flow`: additive `opensLayerId`
-- `containers[].opensLayerId` is set when a valid root's `flowRef` names that container with no `handlerId`. Today that is only `container:customerproject.ingress-app` → `layer:customerproject.ingress-app`.
+- `containers[].opensLayerId` is set when a valid root's `flowRef` names that container with no `handlerId`. With the v1.1 catalogs that is every container: customerproject `ingress-app`, `func-app`, `api` and price `api`, `api-batch`, `func-app`, `ingress-app`, each → `layer:{project}.{container}`. Nested layers are never Flow targets.
 - `nodes[].opensLayerId` (handler nodes only) is set when a valid root's `flowRef` names that handler. No such root exists yet.
 - When there is no link, the property is **omitted**, not `null`. That covers an absent catalog, an invalid catalog, and containers/handlers without a root.
 - Nothing else changes: `schemaVersion` stays 2, and `appIds`/`appId`, ports, positions/`positionSource`, edges, edge ids, `sb` counts, sources and layout are byte-identical with the field removed (covered by tests).
@@ -66,7 +82,8 @@ UI rule: show "Explore architecture" (button + keyboard action) only when `opens
 - Architecture ids (`layer:`, `comp:`, `aedge:`) are never Flow ids. They do not appear in Flow `nodes`/`containers`/`edges`. `PUT /flow/positions` ignores them, and Flow reset/export never touches them.
 - Never join activity, SB counts, DLQ state, glows, console lines or throughput onto `comp:`/`aedge:` ids. The layer payload has no `sb`, count, activity or position fields, and the server never adds any.
 - `node.flowEntityId` (e.g. `q:customerproject-ingress`) is only a reference for an optional "View in Flow" navigation. Do not show live status inherited from it.
-- Every edge is `kind: "conceptual"`, meaning a message/data/dependency relationship. It says nothing about order, timing, causality or delivery. Do not animate edges or number them as steps. Conceptual cycles are allowed and can appear.
+- Every edge is `kind: "conceptual"`, meaning a message/data/dependency relationship. It says nothing about order, timing, causality or delivery. Do not animate edges or number them as steps. Conceptual cycles are allowed and can appear, but never as a two-edge back-and-forth through one boundary node (see V-007).
+- The same `flowEntityId` (e.g. `q:customerproject`) can appear on several nodes and layers. Each one is a reference to the same Flow entity, not a separate runtime entity.
 - `confidence: "confirmed"` means the cited artifact supports the statement. It does **not** mean runtime behaviour was observed. Show layer `uncertainties` globally and node/edge `uncertainties` + `sources` on selection.
 - Clickable sources: repo refs are `<repo>/<relative path>`, registration refs are `dev-overview/architecture/registrations/<id>.json`, and Confluence refs are `https://<site>.atlassian.net/wiki/…/pages/<id>…`. The server rejects other forms, but the UI must still escape labels and apply its own link allowlist. Never open `file://` or run anything.
 - Layout is auto-layout only. If positions are added later, use a separate `apos:v1:{registrationId}:{layerId}:{nodeId}` store, never FlowPositionStore.
@@ -79,7 +96,7 @@ The loader reads `architecture/layers/{registration.project}/index.json` plus ev
 4. **V-004 parents**: every parent exists, is not the layer itself, and the parent graph is acyclic.
 5. **V-005 drill ownership**: each `opensLayerId` exists, is a direct child of the containing layer, and sits on a `kind: component, boundary: inside` node. Each non-root has exactly one opener, and roots have none.
 6. **V-006 Flow binding**: the root container exists, the optional handler exists and belongs to it, there is at most one root per Flow source, and `flowEntityId` exists in `registration.entities`.
-7. **V-007 endpoints**: edge `from`/`to` are nodes of the same layer, with no self edges.
+7. **V-007 endpoints**: edge `from`/`to` are nodes of the same layer, with no self edges. The Flow v2 invariant also applies: a `boundary: outside` node must not both receive from and send to the same component (`V-007: boundary node {id} both receives from and sends to the same component {peer}`). Express a self-requeue as a badge in the responsibility text. ADDENDA-011 §10 and `drafts/verify-addenda-011.py` call this rule "V-008 bidirectional". The server reports it under V-007 because V-008 here means evidence (§6). It is the same check.
 8. **V-008 evidence**: every layer/node/edge has sources, `inferred`/`uncertain` sources need a `note`, an `inferred` kind is never `confirmed`, and refs use the allowed forms above.
 
 Any issue rejects the whole catalog (`ARCHITECTURE_INVALID`), so partial layers are never served. Other projects and the Flow keep working.
