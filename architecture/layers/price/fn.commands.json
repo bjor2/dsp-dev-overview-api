@@ -1,0 +1,287 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.fn.commands",
+  "project": "price",
+  "title": "COMMANDS \u2014 price list and campaign commands",
+  "summary": "Explore of the COMMANDS handler inside the price Functions container: Nexstep/VisionPoint price-list imports and deletes, item-campaign checks/publishing and lowest-price snapshots maintain the price database; campaign changes are published on the price topic. Scheduled triggers (no-layer timer handlers) only enqueue commands. Conceptual only.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:price.func-app",
+    "handlerId": "price.fn.commands"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T16:04:10+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/price.dev.json",
+      "note": "price.fn.commands handler (q:price) in container func-app; publishes to t:price.",
+      "confidence": "confirmed",
+      "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+      "note": "Lines 71\u2013181: COMMANDS subjects: Nexstep/VisionPoint imports and deletes, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices.",
+      "confidence": "confirmed",
+      "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776628",
+      "revision": "version:8",
+      "confidence": "confirmed",
+      "note": "Before-price design: daily lowest-price snapshot via timer\u2192queue; schedule 07:00/13:00/19:00; campaign before-price after each snapshot; purge >6 months via separate timer; Outlet hardcoded campaign id; API returns before price in campaign price part. Design intent matching timer\u2192queue handlers \u2014 not a binding of exact cron expressions beyond this page."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256 (Team Lead ruled HEAD check unnecessary).",
+    "Per-handler internals of ~23 PICO and 14 command subjects are grouped, not enumerated.",
+    "Write-side storage type/topology beyond EF registration is not asserted.",
+    "Timer handlers timer-snapshot / timer-check-campaigns / timer-campaign-lowest are no-layer; they appear here only as the grouped \u201cScheduled triggers\u201d node.",
+    "Re-cut from retired root layer:price.func-app (ADDENDA-011.1 per-handler roots); old layer id is ignored for dsp-arch-pos and not recycled. New split layers start auto-layout.",
+    "Responsibilities of sibling handlers in the same container are shown only as boundary queue/store nodes; no cross-root edges are drawn."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.func.commands-input",
+      "label": "Price command queue",
+      "kind": "external",
+      "responsibility": "Boundary input for COMMANDS (imports, campaign checks, lowest-price snapshots). Timer handlers and API enqueue here; command handlers that requeue are badges.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+          "note": "Lines 71\u2013181: COMMANDS subjects: Nexstep/VisionPoint imports and deletes, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "q:price triggers price.fn.commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "q:price"
+    },
+    {
+      "id": "comp:price.func.timers",
+      "label": "Scheduled triggers",
+      "kind": "component",
+      "responsibility": "Three timers enqueue SaveLowestPriceSnapshot, CheckItemCampaigns and SaveCampaignLowestPrices.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceSnapshotTimerTrigger.cs",
+          "note": "Line 15: timer 04/12/17 -> SaveLowestPriceSnapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:cfc5278380e4e0aaaa0eb0ff2033ca7fdb2f0a0cf6445c51f034386d67726d9d"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/CheckItemCampaignsTimerTrigger.cs",
+          "note": "Line 20: hourly timer -> CheckItemCampaigns.",
+          "confidence": "confirmed",
+          "revision": "sha256:f0cbb26cfad6ebccddec468e30129f3aa9e8e1426fca11b94281f4790b32df59"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceCampaignLowestPricesTimerTrigger.cs",
+          "note": "Line 20: timer -> SaveCampaignLowestPrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:f5ff07ae635fe7122a463bce84cdf92d107c3c998cd2ba154be9d258693149ff"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.func.commands",
+      "label": "Price list & campaign commands",
+      "kind": "component",
+      "responsibility": "Nexstep/VisionPoint price list and campaign import/delete, campaign change detection and lowest-price snapshots.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+          "note": "Lines 71\u2013181: COMMANDS subjects: Nexstep/VisionPoint imports and deletes, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+          "note": "Lines 15\u201352: compute item campaign changes and SendBatchAsync ItemCampaignsChanged to price topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Admin/PublishAllItemCampaignsHandler.cs",
+          "note": "Lines 19\u201348: publish all item campaigns to price topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:2e00d40d4fbe6ce1c04cfc4f92477ae63d4701c33fbf5cc2359023203418eafa"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.func.price-db",
+      "label": "Price SQL storage",
+      "kind": "store",
+      "responsibility": "Write-side price database (prices, campaigns, calculation reference data).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Storage.Write/PriceStorageDbContext.cs",
+          "note": "Write-side price SQL EF DbContext; no values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:df11a327132a271f1c4dec8c2ba44cc97c231b5c3fcdc44e026c71c84a3b1b81"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price"
+    },
+    {
+      "id": "comp:price.func.topic",
+      "label": "Price topic",
+      "kind": "external",
+      "responsibility": "Boundary output for ItemCampaignsChanged.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Messaging/PriceTopicClient.cs",
+          "note": "Line 15: price topic sender.",
+          "confidence": "confirmed",
+          "revision": "sha256:3f29e03c69d04c7b9f669ab6b5a3fcc7fba7f8fbfe3388cd71680ad23f0d6e8b"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+          "note": "Lines 15\u201352: compute item campaign changes and SendBatchAsync ItemCampaignsChanged to price topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "fn.commands publishes ItemCampaignsChanged to t:price.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "t:price"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.func.timers-cmd",
+      "from": "comp:price.func.timers",
+      "to": "comp:price.func.commands-input",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Scheduled commands",
+      "description": "Three timer-produced subjects.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceSnapshotTimerTrigger.cs",
+          "note": "Line 15: timer 04/12/17 -> SaveLowestPriceSnapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:cfc5278380e4e0aaaa0eb0ff2033ca7fdb2f0a0cf6445c51f034386d67726d9d"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/CheckItemCampaignsTimerTrigger.cs",
+          "note": "Line 20: hourly timer -> CheckItemCampaigns.",
+          "confidence": "confirmed",
+          "revision": "sha256:f0cbb26cfad6ebccddec468e30129f3aa9e8e1426fca11b94281f4790b32df59"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceCampaignLowestPricesTimerTrigger.cs",
+          "note": "Line 20: timer -> SaveCampaignLowestPrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:f5ff07ae635fe7122a463bce84cdf92d107c3c998cd2ba154be9d258693149ff"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.func.cmd-in",
+      "from": "comp:price.func.commands-input",
+      "to": "comp:price.func.commands",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Price commands",
+      "description": "Subject families per PriceQueueHandler.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+          "note": "Lines 71\u2013181: COMMANDS subjects: Nexstep/VisionPoint imports and deletes, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.func.cmd-db",
+      "from": "comp:price.func.commands",
+      "to": "comp:price.func.price-db",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Price lists / campaigns / snapshots",
+      "description": "Import and snapshot writes.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/PriceQueueHandler.cs",
+          "note": "Lines 71\u2013181: COMMANDS subjects: Nexstep/VisionPoint imports and deletes, CheckItemCampaigns, PublishAllItemCampaigns, SaveLowestPriceSnapshot, SaveCampaignLowestPrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:c7a363d38161eddee55289e17b6cce465fa377f85fc6e51bad2616bb1ca1b921"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.func.cmd-topic",
+      "from": "comp:price.func.commands",
+      "to": "comp:price.func.topic",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "ItemCampaignsChanged",
+      "description": "From campaign checks / publish-all.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Events/CheckItemCampaignsHandler.cs",
+          "note": "Lines 15\u201352: compute item campaign changes and SendBatchAsync ItemCampaignsChanged to price topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:9aed2b436a57f33e074a26c6bd4e2ab1b2a0c6ba50afe7f9d502a6650fe8c7dc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Admin/PublishAllItemCampaignsHandler.cs",
+          "note": "Lines 19\u201348: publish all item campaigns to price topic.",
+          "confidence": "confirmed",
+          "revision": "sha256:2e00d40d4fbe6ce1c04cfc4f92477ae63d4701c33fbf5cc2359023203418eafa"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

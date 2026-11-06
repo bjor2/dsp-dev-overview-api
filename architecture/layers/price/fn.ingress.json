@@ -1,0 +1,215 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.fn.ingress",
+  "project": "price",
+  "title": "INGRESS \u2014 importing M3 change events",
+  "summary": "Explore of the INGRESS handler inside the price Ingress container: 14 M3 *Changed contracts are persisted as ingress models and snapshot creation is requested on the snapshot queue. Snapshot composition and full reload belong to the SNAPSHOT handler and appear here only as the boundary queue. Arrows explain responsibilities, never execution order or observed events.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:price.ingress-app",
+    "handlerId": "price.fn.ingress"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T16:04:10+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/price.dev.json",
+      "note": "price.fn.ingress handler (q:price-ingress) in container ingress-app.",
+      "confidence": "confirmed",
+      "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs",
+      "note": "Lines 45\u2013161: INGRESS subjects: 14 M3 *Changed contracts.",
+      "confidence": "confirmed",
+      "revision": "sha256:83ee45d4f62dca61e1b2e1b7d9dd6da87776fcd187f4e1d52f4cc7c0dc1bf496"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22773861",
+      "revision": "version:67",
+      "confidence": "confirmed",
+      "note": "Design intent: replace ADF CSV ingress with PICO/Table Event streams (OnPrem M3 then M3 Cloud); Ingress SQL on same instance as domain; minimal ingress storage. Not deployment proof."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774388",
+      "revision": "version:2",
+      "confidence": "confirmed",
+      "note": "Historical 2021 overview: ADF nightly CSV dump \u2192 blob trigger \u2192 Function \u2192 SQL; Web API via APIM/Okta; names web-870-*/func-870-*/sql; ASB messages n/a. Design intent / historical ops \u2014 not proof of current topology."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256 (Team Lead ruled HEAD check unnecessary).",
+    "Ingress port is unknown in registration (label \"port ?\").",
+    "Unresolved conflict: Confluence 22774388 v2 describes ADF nightly CSV ingress and ASB messages as n/a, while registration + PICO design (22773861 v67) and current handlers imply ASB queues/PICO \u2014 which path is live is unresolved; do not invent.",
+    "Re-cut from retired root layer:price.ingress-app (ADDENDA-011.1 per-handler roots); old layer id is ignored for dsp-arch-pos and not recycled. New split layers start auto-layout.",
+    "Responsibilities of sibling handlers in the same container are shown only as boundary queue/store nodes; no cross-root edges are drawn."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.ingress.input",
+      "label": "Price ingress queue",
+      "kind": "external",
+      "responsibility": "Boundary input of 14 M3 *Changed contracts (locally forwarded from per-entity topic subscriptions).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs",
+          "note": "Lines 45\u2013161: INGRESS subjects: 14 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:83ee45d4f62dca61e1b2e1b7d9dd6da87776fcd187f4e1d52f4cc7c0dc1bf496"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "q:price-ingress triggers price.fn.ingress; local subscriptions forward into it.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "q:price-ingress"
+    },
+    {
+      "id": "comp:price.ingress.import",
+      "label": "Change-event import",
+      "kind": "component",
+      "responsibility": "Persists ingress models and requests snapshot creation.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs",
+          "note": "Lines 45\u2013161: INGRESS subjects: 14 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:83ee45d4f62dca61e1b2e1b7d9dd6da87776fcd187f4e1d52f4cc7c0dc1bf496"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs",
+          "note": "Line 55: import handlers send snapshot commands to the snapshot queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8b11fc449945960ffeeab058bea8a28e22776a04f8d0f77cd6e61b81d8d9bb3"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.ingress.storage",
+      "label": "Price ingress SQL",
+      "kind": "store",
+      "responsibility": "Persisted ingress models for snapshot composition.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Storage/Configuration/ConfigurationExtensions.cs",
+          "note": "Ingress SQL storage registration; no values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:26fe0e77034aa2e96cd7d73c227d03b9cf5e1fc67370bf2050afb7be3462727d"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price"
+    },
+    {
+      "id": "comp:price.ingress.snapshot-queue",
+      "label": "Price snapshot queue",
+      "kind": "external",
+      "responsibility": "Decouples import from snapshot composition and full reload.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceSnapshotQueueHandler.cs",
+          "note": "Lines 30\u2013119: SNAPSHOT subjects: 4 Create*Snapshot and 6 Reload* commands.",
+          "confidence": "confirmed",
+          "revision": "sha256:73f40adb1895632b8833c9e145b973f2a4bb24b876acd4bb837f724603ebebf2"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs",
+          "note": "Line 55: import handlers send snapshot commands to the snapshot queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8b11fc449945960ffeeab058bea8a28e22776a04f8d0f77cd6e61b81d8d9bb3"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "q:price-snapshot triggers price.fn.snapshot.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "q:price-snapshot"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.ingress.in",
+      "from": "comp:price.ingress.input",
+      "to": "comp:price.ingress.import",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "M3 *Changed",
+      "description": "14 subjects.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Functions/Functions/PriceIngressQueueHandler.cs",
+          "note": "Lines 45\u2013161: INGRESS subjects: 14 M3 *Changed contracts.",
+          "confidence": "confirmed",
+          "revision": "sha256:83ee45d4f62dca61e1b2e1b7d9dd6da87776fcd187f4e1d52f4cc7c0dc1bf496"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.persist",
+      "from": "comp:price.ingress.import",
+      "to": "comp:price.ingress.storage",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Ingress models",
+      "description": "Persist.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs",
+          "note": "Line 55: import handlers send snapshot commands to the snapshot queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8b11fc449945960ffeeab058bea8a28e22776a04f8d0f77cd6e61b81d8d9bb3"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.ingress.request",
+      "from": "comp:price.ingress.import",
+      "to": "comp:price.ingress.snapshot-queue",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Create*Snapshot",
+      "description": "Snapshot requests.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Ingress.Application/Features/Import/ChangeEventHandlerBase.cs",
+          "note": "Line 55: import handlers send snapshot commands to the snapshot queue.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8b11fc449945960ffeeab058bea8a28e22776a04f8d0f77cd6e61b81d8d9bb3"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

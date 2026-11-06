@@ -76,7 +76,7 @@ public static class ArchitectureLoader
         var documents = new List<(ArchitectureLayerDoc Doc, JsonObject Node)>();
         foreach (var entry in catalog.Layers)
         {
-            var (node, layerIssues) = Read(layersRoot, dir, entry.Path, validator.ValidateLayer, hash);
+            var (node, layerIssues) = Read(layersRoot, dir, entry.Path, validator.ValidateLayer, hash, ContainerOnlyRoot);
             issues = [.. issues, .. layerIssues];
             if (node is not null) documents.Add((node.Deserialize<ArchitectureLayerDoc>(Json)!, node));
         }
@@ -91,9 +91,18 @@ public static class ArchitectureLoader
     // A dangling symlink is present (and then rejected), not absent.
     private static bool Present(string path) => File.Exists(path) || new FileInfo(path).LinkTarget is not null;
 
+    // V-011 (ADDENDA-011.1): the schema already rejects a container-only root (roots require flowRef.handlerId) as V-001; this names
+    // the rule as well, so the diagnostic says why. No legacy container-root mode exists.
+    private static IReadOnlyList<string> ContainerOnlyRoot(string basename, JsonElement layer) =>
+        layer.TryGetProperty("parentLayerId", out var parent) && parent.ValueKind == JsonValueKind.Null
+        && layer.TryGetProperty("flowRef", out var flow) && flow.ValueKind == JsonValueKind.Object
+        && !(flow.TryGetProperty("handlerId", out var handler) && handler.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(handler.GetString()))
+            ? [$"V-011: {basename} root has no flowRef.handlerId (container-only roots are not Explore targets)"]
+            : [];
+
     // Every file read feeds UTF8(basename) + "\0" + bytes into the catalog hash, in read order (index.json, then catalog order).
     private static (JsonObject? Node, IReadOnlyList<string> Issues) Read(string layersRoot, string dir, string basename,
-        Func<JsonElement, IReadOnlyList<string>> validate, IncrementalHash hash)
+        Func<JsonElement, IReadOnlyList<string>> validate, IncrementalHash hash, Func<string, JsonElement, IReadOnlyList<string>>? rules = null)
     {
         var (path, issue) = ArchitecturePaths.Resolve(layersRoot, dir, basename);
         if (issue is not null) return (null, [issue]);
@@ -104,7 +113,7 @@ public static class ArchitectureLoader
             hash.AppendData(bytes);
             using var doc = JsonDocument.Parse(bytes);
             var errors = validate(doc.RootElement);
-            if (errors.Count > 0) return (null, errors.Select(e => $"V-001: {basename} {e}").ToList());
+            if (errors.Count > 0) return (null, [.. errors.Select(e => $"V-001: {basename} {e}"), .. rules?.Invoke(basename, doc.RootElement) ?? []]);
             return (JsonNode.Parse(bytes)!.AsObject(), []);
         }
         catch (JsonException ex) { return (null, [$"V-001: {basename} is not valid JSON (line {(ex.LineNumber ?? 0) + 1})"]); }

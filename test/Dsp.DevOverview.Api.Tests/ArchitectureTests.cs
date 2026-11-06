@@ -12,7 +12,8 @@ namespace Dsp.DevOverview.Api.Tests;
 /// <summary>Writable copy of a real architecture catalog in a temp layers root (the real files are only read).</summary>
 internal sealed class LayerTree : IDisposable
 {
-    public const string RootLayer = "layer:customerproject.ingress-app";
+    public const string RootLayer = "layer:customerproject.fn.ingress";
+    public const string RootHandler = "customerproject.fn.ingress";
     public const string IngressContainer = "container:customerproject.ingress-app";
 
     public string Project { get; }
@@ -42,15 +43,15 @@ internal sealed class LayerTree : IDisposable
         return new LayerTree(project, registration, layersRoot, catalog, layers);
     }
 
-    /// <summary>The full checked-in customerproject catalog (3 roots, one nested child).</summary>
+    /// <summary>The full checked-in customerproject catalog (5 handler roots, one nested child).</summary>
     public static LayerTree Real(string? layersRoot = null) => FromRepo("customerproject", Registration, layersRoot);
 
-    /// <summary>The full checked-in price catalog (4 roots, one nested child), validated against price.dev.</summary>
+    /// <summary>The full checked-in price catalog (8 handler roots, one nested child), validated against price.dev.</summary>
     public static LayerTree PriceReal(string? layersRoot = null) => FromRepo("price", PriceRegistration, layersRoot);
 
     /// <summary>
-    /// Synthetic forest built from the ingress worked example only: the ingress root is the sole catalog entry, followed by a
-    /// chain of children (depth 2..<paramref name="depth"/>), each opened by its parent's inside import component (node 1).
+    /// Synthetic forest built from the INGRESS handler root only: it is the sole catalog entry, followed by a chain of children
+    /// (depth 2..<paramref name="depth"/>), each opened by its parent's inside import component (node 1).
     /// Layer/Entry indexes are therefore 0 = root, 1 = depth 2, 2 = depth 3, …
     /// </summary>
     public static LayerTree Deep(int depth)
@@ -84,6 +85,16 @@ internal sealed class LayerTree : IDisposable
     public JsonObject Node(int layer, int node) => Layers[layer]["nodes"]![node]!.AsObject();
     public JsonObject Edge(int layer, int edge) => Layers[layer]["edges"]![edge]!.AsObject();
     public JsonObject Entry(int i) => Catalog["layers"]![i]!.AsObject();
+    public int LayerIndex(string layerId) => Layers.FindIndex(l => l["id"]!.GetValue<string>() == layerId);
+
+    /// <summary>Second inside component in <paramref name="layer"/>: a copy of its import component (node 1) under a new id, opening <paramref name="opens"/>.</summary>
+    public void AddOpener(int layer, string idSuffix, string opens)
+    {
+        var twin = Node(layer, 1).DeepClone().AsObject();
+        twin["id"] = twin["id"]!.GetValue<string>() + idSuffix;
+        twin["opensLayerId"] = opens;
+        Layers[layer]["nodes"]!.AsArray().Add(twin);
+    }
     public string EntryPath(int i) => Entry(i)["path"]!.GetValue<string>();
 
     public LayerTree Write()
@@ -119,80 +130,116 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     private static ArchitectureState LoadPrice() =>
         ArchitectureLoader.Load(RepoPaths.ArchitectureLayers, LayerTree.PriceRegistration, () => LayerTree.Schema);
 
-    private const string FuncLayer = "layer:customerproject.func-app";
+    private const string DomainLayer = "layer:customerproject.fn.domain";
     private const string DomainUpdateLayer = "layer:customerproject.func-app.domain-update";
     private const string ApiLayer = "layer:customerproject.api";
+    private const string FuncContainer = "container:customerproject.func-app";
+
+    /// <summary>ADDENDA-011.1 customerproject: every Flow handler has exactly one root (handler id → root layer id).</summary>
+    public static readonly IReadOnlyDictionary<string, string> CustomerprojectHandlerRoots = new Dictionary<string, string>
+    {
+        ["customerproject.api.http"] = ApiLayer,
+        ["customerproject.fn.commands"] = "layer:customerproject.fn.commands",
+        ["customerproject.fn.domain"] = DomainLayer,
+        [LayerTree.RootHandler] = LayerTree.RootLayer,
+        ["customerproject.fn.snapshot"] = "layer:customerproject.fn.snapshot",
+    };
+
+    /// <summary>ADDENDA-011.1 price: 8 handler roots. The other 10 handlers (subscriptions, 5 sub-*, 4 timers) are deferred/no-layer.</summary>
+    public static readonly IReadOnlyDictionary<string, string> PriceHandlerRoots = new Dictionary<string, string>
+    {
+        ["price.api.http"] = "layer:price.api",
+        ["price.api-batch.http"] = "layer:price.api-batch",
+        ["price.fn.blob-optimera"] = "layer:price.fn.blob-optimera",
+        ["price.fn.commands"] = "layer:price.fn.commands",
+        ["price.fn.domain"] = "layer:price.fn.domain",
+        ["price.fn.domain-ingress"] = "layer:price.fn.domain-ingress",
+        ["price.fn.ingress"] = "layer:price.fn.ingress",
+        ["price.fn.snapshot"] = "layer:price.fn.snapshot",
+    };
+
+    public static readonly string[] PriceHandlersWithoutRoot =
+    [
+        "price.fn.subscriptions", "price.fn.sub-customerproject", "price.fn.sub-customer", "price.fn.sub-warehouse", "price.fn.sub-currency",
+        "price.fn.sub-product", "price.fn.timer-snapshot", "price.fn.timer-check-campaigns", "price.fn.timer-campaign-lowest",
+        "price.fn.timer-reload-m3cloud",
+    ];
 
     [Fact]
-    public void Real_customerproject_catalog_has_three_roots_and_a_nested_domain_update_child()
+    public void Real_customerproject_catalog_has_five_handler_roots_and_a_nested_domain_update_child()
     {
         var state = LoadReal();
         Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
         Assert.Empty(state.Issues);
         var c = state.Catalog!;
-        Assert.Equal([ApiLayer, FuncLayer, LayerTree.RootLayer], c.Roots.Select(r => r.LayerId)); // ordinal by layerId
-        Assert.All(c.Roots, r => Assert.Null(r.FlowRef.HandlerId));
-        Assert.Equal(4, c.Layers.Count);
+        Assert.Equal(CustomerprojectHandlerRoots.Values.Order(StringComparer.Ordinal), c.Roots.Select(r => r.LayerId)); // ordinal by layerId
+        Assert.Equal(6, c.Layers.Count);
 
-        // Ingress worked example is unchanged: 7 nodes, 9 conceptual edges, root crumb only, no children.
+        // Every root binds one handler in that handler's own container (ADDENDA-011.1); no container-only root exists.
+        var handlers = LayerTree.Registration.Handlers.ToDictionary(h => h.Id);
+        Assert.All(c.Roots, r =>
+        {
+            Assert.False(string.IsNullOrEmpty(r.FlowRef.HandlerId));
+            Assert.Equal(handlers[r.FlowRef.HandlerId].ContainerId, r.FlowRef.ContainerId);
+        });
+        Assert.Equal(CustomerprojectHandlerRoots, c.HandlerLinks);
+        Assert.Equal(LayerTree.Registration.Handlers.Select(h => h.Id).Order(), c.HandlerLinks.Keys.Order());
+
+        // INGRESS handler root: 4 nodes, 3 conceptual edges, root crumb only, no children.
         var root = c.Roots.Single(r => r.LayerId == LayerTree.RootLayer);
-        Assert.Equal((LayerTree.IngressContainer, "Ingress — import and snapshot responsibilities"), (root.FlowRef.ContainerId, root.Title));
+        Assert.Equal(new ArchitectureFlowRef(LayerTree.IngressContainer, LayerTree.RootHandler), root.FlowRef);
+        Assert.Equal("INGRESS — importing M3 change events", root.Title);
         var layer = c.Layers[LayerTree.RootLayer];
-        Assert.Equal(7, layer.Document.GetProperty("nodes").GetArrayLength());
-        Assert.Equal(9, layer.Document.GetProperty("edges").GetArrayLength());
+        Assert.Equal(4, layer.Document.GetProperty("nodes").GetArrayLength());
+        Assert.Equal(3, layer.Document.GetProperty("edges").GetArrayLength());
         Assert.False(layer.Document.TryGetProperty("$schema", out _)); // relative file path is not served
         Assert.Equal(new[] { new ArchitectureCrumb(LayerTree.RootLayer, root.Title) }, layer.Breadcrumbs);
-        Assert.Equal(LayerTree.IngressContainer, layer.RootFlowRef.ContainerId);
+        Assert.Equal(root.FlowRef, layer.RootFlowRef);
         Assert.Empty(layer.Children);
 
-        // func-app opens domain-update from its snapshot-apply component; the child inherits the func-app Flow anchor.
-        var func = c.Layers[FuncLayer];
-        Assert.Equal(new[] { new ArchitectureChild(DomainUpdateLayer, "DOMAIN — applying ingress snapshots", "comp:customerproject.func.snapshot-apply") }, func.Children);
+        // DOMAIN opens domain-update (id kept, reparented) from its snapshot-apply component; the child inherits the DOMAIN handler anchor.
+        var domain = c.Layers[DomainLayer];
+        Assert.Equal(new[] { new ArchitectureChild(DomainUpdateLayer, "DOMAIN — applying ingress snapshots", "comp:customerproject.func.snapshot-apply") }, domain.Children);
         var nested = c.Layers[DomainUpdateLayer];
-        Assert.Equal([FuncLayer, DomainUpdateLayer], nested.Breadcrumbs.Select(b => b.LayerId));
-        Assert.Equal(func.Breadcrumbs, nested.Breadcrumbs.Take(1));
-        Assert.Equal(new ArchitectureFlowRef("container:customerproject.func-app"), nested.RootFlowRef);
+        Assert.Equal([DomainLayer, DomainUpdateLayer], nested.Breadcrumbs.Select(b => b.LayerId));
+        Assert.Equal(domain.Breadcrumbs, nested.Breadcrumbs.Take(1));
+        Assert.Equal(new ArchitectureFlowRef(FuncContainer, "customerproject.fn.domain"), nested.RootFlowRef);
         Assert.False(nested.Document.TryGetProperty("flowRef", out _)); // inherited, not authored
         Assert.Empty(nested.Children);
         Assert.Empty(c.Layers[ApiLayer].Children);
+        Assert.Equal(new ArchitectureFlowRef("container:customerproject.api", "customerproject.api.http"), c.Layers[ApiLayer].RootFlowRef);
 
         Assert.All(c.Layers.Values.Select(l => l.Document), d =>
             Assert.All(d.GetProperty("edges").EnumerateArray(), e => Assert.Equal("conceptual", e.GetProperty("kind").GetString())));
-        Assert.Equal(new Dictionary<string, string>
-        {
-            ["container:customerproject.api"] = ApiLayer,
-            ["container:customerproject.func-app"] = FuncLayer,
-            [LayerTree.IngressContainer] = LayerTree.RootLayer,
-        }, c.ContainerLinks);
-        Assert.Empty(c.HandlerLinks);
     }
 
     [Fact]
-    public void Real_price_catalog_has_four_roots_and_a_nested_get_prices_child()
+    public void Real_price_catalog_has_eight_handler_roots_and_a_nested_get_prices_child()
     {
         var state = LoadPrice();
         Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
         Assert.Empty(state.Warnings);
         var c = state.Catalog!;
         Assert.Equal("price.dev", c.RegistrationId);
-        Assert.Equal(["layer:price.api", "layer:price.api-batch", "layer:price.func-app", "layer:price.ingress-app"], c.Roots.Select(r => r.LayerId));
-        Assert.Equal(5, c.Layers.Count);
+        Assert.Equal(PriceHandlerRoots.Values.Order(StringComparer.Ordinal), c.Roots.Select(r => r.LayerId));
+        Assert.Equal(9, c.Layers.Count);
+        var handlers = LayerTree.PriceRegistration.Handlers.ToDictionary(h => h.Id);
+        Assert.All(c.Roots, r => Assert.Equal(handlers[r.FlowRef.HandlerId].ContainerId, r.FlowRef.ContainerId));
+        Assert.Equal(PriceHandlerRoots, c.HandlerLinks);
+        // Deferred (subscriptions, sub-*) and no-layer (timers) handlers deliberately have no root; nothing else is unaccounted for.
+        Assert.Equal(handlers.Keys.Order(), PriceHandlerRoots.Keys.Concat(PriceHandlersWithoutRoot).Order());
 
         var api = c.Layers["layer:price.api"];
         Assert.Equal(new[] { new ArchitectureChild("layer:price.api.get-prices", "Price reading — strategy, DSP calculation and M3 fallback", "comp:price.api.price-reader") }, api.Children);
         var nested = c.Layers["layer:price.api.get-prices"];
         Assert.Equal(["layer:price.api", "layer:price.api.get-prices"], nested.Breadcrumbs.Select(b => b.LayerId));
-        Assert.Equal(new ArchitectureFlowRef("container:price.api"), nested.RootFlowRef);
+        Assert.Equal(new ArchitectureFlowRef("container:price.api", "price.api.http"), nested.RootFlowRef);
         Assert.False(nested.Document.TryGetProperty("flowRef", out _));
 
         // Deliberately thin, high-uncertainty layer still loads and keeps its caveats visible.
         var batch = c.Layers["layer:price.api-batch"].Document;
         Assert.Equal((5, 4), (batch.GetProperty("nodes").GetArrayLength(), batch.GetProperty("edges").GetArrayLength()));
         Assert.NotEqual(0, batch.GetProperty("uncertainties").GetArrayLength());
-
-        Assert.Equal(LayerTree.PriceRegistration.Containers.Select(x => x.Id).Order(), c.ContainerLinks.Keys.Order());
-        Assert.All(c.ContainerLinks, kv => Assert.Equal(kv.Key.Replace("container:", "layer:"), kv.Value));
-        Assert.Empty(c.HandlerLinks);
     }
 
     [Fact]
@@ -217,7 +264,7 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         Assert.Equal(ArchitectureStatus.Invalid, cp.Load().Status);
         var p = price.Load();
         Assert.True(p.Status == ArchitectureStatus.Valid, string.Join("\n", p.Issues));
-        Assert.Equal(4, p.Catalog!.Roots.Count);
+        Assert.Equal(8, p.Catalog!.Roots.Count);
     }
 
     [Fact]
@@ -288,7 +335,7 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
             Assert.Equal(first, Hash());
             Assert.Equal(LoadReal().Catalog!.CatalogHash, first); // no machine path in the input
 
-            var layer = Path.Combine(dir, "ingress-app.json");
+            var layer = Path.Combine(dir, "fn.ingress.json");
             File.AppendAllText(layer, " "); // one byte, still the same valid document
             var changed = Hash();
             Assert.NotEqual(first, changed);
@@ -309,6 +356,51 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         Assert.Equal(ArchitectureStatus.Absent, tree.Load().Status);
     }
 
+    [Fact]
+    public void Underscore_prefixed_obsolete_dirs_are_never_a_project_or_layer_source()
+    {
+        using var tree = LayerTree.Real();
+        tree.Write();
+        // Retired container roots kept for reference under the project's _obsolete/: a container-only root that V-011 would reject,
+        // with its own index.json. Only index-listed sibling basenames are ever read, so the catalog stays valid and unchanged.
+        var obsolete = Directory.CreateDirectory(Path.Combine(tree.ProjectDir, "_obsolete")).FullName;
+        var retired = tree.Layer(0).DeepClone().AsObject();
+        retired["id"] = "layer:customerproject.ingress-app";
+        retired["flowRef"] = new JsonObject { ["containerId"] = LayerTree.IngressContainer };
+        File.WriteAllText(Path.Combine(obsolete, "ingress-app.json"), retired.ToJsonString());
+        var retiredCatalog = tree.Catalog.DeepClone().AsObject();
+        retiredCatalog["layers"] = new JsonArray(new JsonObject { ["id"] = "layer:customerproject.ingress-app", ["path"] = "ingress-app.json" });
+        File.WriteAllText(Path.Combine(obsolete, "index.json"), retiredCatalog.ToJsonString());
+        // A layers-root level _obsolete/ project folder is not a project either.
+        Directory.CreateDirectory(Path.Combine(tree.LayersRoot, "_obsolete"));
+        File.WriteAllText(Path.Combine(tree.LayersRoot, "_obsolete", "index.json"), retiredCatalog.ToJsonString());
+
+        var state = tree.Load();
+        Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
+        Assert.Equal(tree.Layers.Select(l => l["id"]!.GetValue<string>()).Order(StringComparer.Ordinal), state.Catalog!.Layers.Keys.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain("layer:customerproject.ingress-app", state.Catalog.Layers.Keys);
+        Assert.All(state.Catalog.Roots, r => Assert.NotNull(r.FlowRef.HandlerId));
+        Assert.Null(ArchitecturePaths.ProjectDir(tree.LayersRoot, "_obsolete"));
+
+        // Listing an _obsolete file in the catalog does not reach it: not a sibling basename (schema path pattern; V-003 backs it up).
+        tree.Entry(0)["path"] = "_obsolete/ingress-app.json";
+        File.WriteAllText(Path.Combine(tree.ProjectDir, "index.json"), tree.Catalog.ToJsonString());
+        var listed = tree.Load();
+        Assert.Equal(ArchitectureStatus.Invalid, listed.Status);
+        Assert.Contains(listed.Issues, i => i.StartsWith("V-001: index.json /layers/0/path"));
+    }
+
+    [Fact]
+    public void Packaged_layers_contain_no_underscore_prefixed_dirs()
+    {
+        Assert.Empty(Directory.GetDirectories(RepoPaths.ArchitectureLayers, "_*", SearchOption.AllDirectories));
+        foreach (var project in Directory.GetDirectories(RepoPaths.ArchitectureLayers))
+        {
+            var listed = JsonNode.Parse(File.ReadAllText(Path.Combine(project, "index.json")))!["layers"]!.AsArray().Select(e => e!["path"]!.GetValue<string>());
+            Assert.Equal(listed.Append("index.json").Order(), Directory.GetFiles(project).Select(Path.GetFileName).Order());
+        }
+    }
+
     [Theory]
     [InlineData(3)]
     [InlineData(6)]
@@ -325,7 +417,7 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         Assert.Equal([LayerTree.RootLayer, .. Enumerable.Range(2, depth - 1).Select(d => $"{LayerTree.RootLayer}.test{d}")],
             deepest.Breadcrumbs.Select(b => b.LayerId));
         Assert.Equal($"Depth {depth}", deepest.Breadcrumbs[^1].Title);
-        Assert.Equal(new ArchitectureFlowRef(LayerTree.IngressContainer), deepest.RootFlowRef);
+        Assert.Equal(new ArchitectureFlowRef(LayerTree.IngressContainer, LayerTree.RootHandler), deepest.RootFlowRef);
         Assert.Empty(deepest.Children);
 
         var child = Assert.Single(c.Layers[LayerTree.RootLayer].Children);
@@ -342,7 +434,7 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         foreach (var n in sibling["nodes"]!.AsArray()) n!["id"] = n["id"]!.GetValue<string>() + ".sib";
         foreach (var e in sibling["edges"]!.AsArray())
             foreach (var key in new[] { "id", "from", "to" }) e![key] = e[key]!.GetValue<string>() + ".sib";
-        tree.Node(0, 4)["opensLayerId"] = sibling["id"]!.GetValue<string>(); // address-snapshots, inside component
+        tree.AddOpener(0, ".sib", sibling["id"]!.GetValue<string>()); // second inside component in the root
         tree.Catalog["layers"]!.AsArray().Add(new JsonObject { ["id"] = sibling["id"]!.GetValue<string>(), ["path"] = "sibling.json" });
         tree.Layers.Add(sibling);
 
@@ -355,40 +447,74 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     [Fact]
     public void Conceptual_dependency_cycles_are_permitted()
     {
-        using var tree = LayerTree.Deep(3);
-        // address-snapshots → import closes import → snapshot-requests → address-snapshots: an explanatory dependency cycle,
-        // not a navigation cycle. (A two-edge cycle through one boundary node is the bidirectional V-007 rejection instead.)
-        var back = tree.Edge(0, 1).DeepClone().AsObject();
-        (back["id"], back["from"], back["to"], back["relationship"]) =
-            ("aedge:customerproject.ingress.reread", "comp:customerproject.ingress.address-snapshots", "comp:customerproject.ingress.import", "dependency");
-        tree.Layer(0)["edges"]!.AsArray().Add(back);
+        using var tree = LayerTree.Real();
+        // SNAPSHOT: address-snapshots ⇄ price-snapshots is an explanatory dependency cycle between inside components, not a navigation
+        // cycle. (A two-edge cycle through one boundary node is the bidirectional V-007 rejection instead.)
+        var snapshot = tree.LayerIndex("layer:customerproject.fn.snapshot");
+        foreach (var (id, from, to) in new[] { ("there", "address", "price"), ("back", "price", "address") })
+        {
+            var edge = tree.Edge(snapshot, 0).DeepClone().AsObject();
+            (edge["id"], edge["from"], edge["to"], edge["relationship"]) = ($"aedge:customerproject.snapshot.cycle-{id}",
+                $"comp:customerproject.ingress.{from}-snapshots", $"comp:customerproject.ingress.{to}-snapshots", "dependency");
+            tree.Layer(snapshot)["edges"]!.AsArray().Add(edge);
+        }
         var state = tree.WriteAndLoad();
         Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
     }
 
+    // ---- ADDENDA-011.1 V-011: roots are Flow handler items ----
+
+    private static JsonObject HandlerRef(string container, string handler) => new() { ["containerId"] = container, ["handlerId"] = handler };
+
     [Fact]
-    public void Handler_bound_root_links_the_handler_not_the_container()
+    public void Container_only_root_is_rejected_as_V011_without_a_legacy_mode()
     {
         using var tree = LayerTree.Real();
-        var handlerRoot = tree.Layer(0).DeepClone().AsObject();
-        handlerRoot["id"] = "layer:customerproject.ingress-handler";
-        handlerRoot["flowRef"] = new JsonObject { ["containerId"] = LayerTree.IngressContainer, ["handlerId"] = "customerproject.fn.ingress" };
-        foreach (var n in handlerRoot["nodes"]!.AsArray()) n!["id"] = n["id"]!.GetValue<string>() + ".h";
-        foreach (var e in handlerRoot["edges"]!.AsArray())
-            foreach (var key in new[] { "id", "from", "to" }) e![key] = e[key]!.GetValue<string>() + ".h";
-        tree.Catalog["layers"]!.AsArray().Add(new JsonObject { ["id"] = "layer:customerproject.ingress-handler", ["path"] = "ingress-handler.json" });
-        tree.Layers.Add(handlerRoot);
-
+        tree.Layer(tree.LayerIndex(LayerTree.RootLayer))["flowRef"]!.AsObject().Remove("handlerId");
         var state = tree.WriteAndLoad();
-        Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
-        Assert.Equal(4, state.Catalog!.Roots.Count);
-        Assert.Equal(3, state.Catalog.ContainerLinks.Count);
-        Assert.Equal(new Dictionary<string, string> { ["customerproject.fn.ingress"] = "layer:customerproject.ingress-handler" }, state.Catalog.HandlerLinks);
+        Assert.Equal(ArchitectureStatus.Invalid, state.Status);
+        Assert.Null(state.Catalog);
+        Assert.Contains("V-011: fn.ingress.json root has no flowRef.handlerId (container-only roots are not Explore targets)", state.Issues);
+        Assert.Contains(state.Issues, i => i.StartsWith("V-001: fn.ingress.json") && i.Contains("handlerId")); // schema says the same
 
-        var g = ArchitectureService.Link(Graph(LayerTree.Registration), state);
-        Assert.Equal("layer:customerproject.ingress-handler", g.Nodes.Single(n => n.Id == "customerproject.fn.ingress").OpensLayerId);
-        Assert.Null(g.Nodes.Single(n => n.Id == "customerproject.fn.snapshot").OpensLayerId);
-        Assert.Equal(LayerTree.RootLayer, g.Containers.Single(c => c.Id == LayerTree.IngressContainer).OpensLayerId);
+        // The cross-document validator rejects it on its own too (no schema in front, e.g. a blank handlerId).
+        var docs = tree.Layers.Select(l => l.Deserialize<ArchitectureLayerDoc>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!).ToList();
+        var catalog = tree.Catalog.Deserialize<ArchitectureCatalogDoc>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Contains($"V-011: root {LayerTree.RootLayer} has no flowRef.handlerId (container-only roots are not Explore targets)",
+            ArchitectureValidator.Check(catalog, docs, LayerTree.Registration));
+    }
+
+    public static TheoryData<string, string> HandlerRootRejections => new()
+    {
+        { "dangling handler", $"V-011: root {LayerTree.RootLayer} handler customerproject.fn.missing is not in the registration" },
+        { "handler in another container", $"V-011: root {LayerTree.RootLayer} handler customerproject.fn.domain belongs to container:customerproject.func-app, not {LayerTree.IngressContainer}" },
+        { "handler of a sibling container's root", $"V-011: root {LayerTree.RootLayer} handler customerproject.api.http belongs to container:customerproject.api, not {LayerTree.IngressContainer}" },
+        { "two roots claim one handler", $"V-011: more than one root for handler customerproject.fn.snapshot (layer:customerproject.fn.ingress, layer:customerproject.fn.snapshot)" },
+        { "two roots claim one handler, each in its right container", $"V-011: more than one root for handler customerproject.fn.domain (layer:customerproject.fn.commands, layer:customerproject.fn.domain)" },
+    };
+
+    [Theory]
+    [MemberData(nameof(HandlerRootRejections))]
+    public void Handler_root_binding_violations_are_V011(string name, string expected)
+    {
+        using var tree = LayerTree.Real();
+        var root = tree.Layer(tree.LayerIndex(LayerTree.RootLayer));
+        switch (name)
+        {
+            case "dangling handler": root["flowRef"] = HandlerRef(LayerTree.IngressContainer, "customerproject.fn.missing"); break;
+            case "handler in another container": root["flowRef"] = HandlerRef(LayerTree.IngressContainer, "customerproject.fn.domain"); break;
+            case "handler of a sibling container's root": root["flowRef"] = HandlerRef(LayerTree.IngressContainer, "customerproject.api.http"); break;
+            case "two roots claim one handler": root["flowRef"] = HandlerRef(LayerTree.IngressContainer, "customerproject.fn.snapshot"); break;
+            case "two roots claim one handler, each in its right container":
+                tree.Layer(tree.LayerIndex("layer:customerproject.fn.commands"))["flowRef"] = HandlerRef(FuncContainer, "customerproject.fn.domain"); break;
+        }
+        var state = tree.WriteAndLoad();
+        Assert.Equal(ArchitectureStatus.Invalid, state.Status);
+        Assert.Null(state.Catalog);
+        Assert.Contains(expected, state.Issues);
+        Assert.StartsWith("ARCHITECTURE_INVALID: ", Assert.Single(state.Warnings));
+        var flow = ArchitectureService.Link(Graph(LayerTree.Registration), state);
+        Assert.All(flow.Nodes, n => Assert.Null(n.OpensLayerId)); // rejected catalog: no Explore anywhere, Flow keeps working
     }
 
     public static TheoryData<string> Rejections => new(Mutations.Keys);
@@ -406,7 +532,7 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         ["navigation cycle"] = t => t.Layer(1)["parentLayerId"] = t.Layer(2)["id"]!.GetValue<string>(),
         ["dangling opener"] = t => t.Node(0, 1)["opensLayerId"] = "layer:customerproject.missing",
         ["orphan child"] = t => t.Node(0, 1).Remove("opensLayerId"),
-        ["duplicate opener"] = t => t.Node(0, 4)["opensLayerId"] = t.Layer(1)["id"]!.GetValue<string>(),
+        ["duplicate opener"] = t => t.AddOpener(0, ".twin", t.Layer(1)["id"]!.GetValue<string>()),
         ["non-child opener (grandchild)"] = t => t.Node(0, 1)["opensLayerId"] = t.Layer(2)["id"]!.GetValue<string>(),
         ["opener targets root"] = t => t.Node(1, 1)["opensLayerId"] = LayerTree.RootLayer,
         ["outside opener"] = t => t.Node(0, 1)["boundary"] = "outside",
@@ -418,8 +544,10 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         ["flow container missing"] = t => t.Layer(0)["flowRef"]!["containerId"] = "container:customerproject.missing",
         ["flow handler outside container"] = t => t.Layer(0)["flowRef"]!["handlerId"] = "customerproject.fn.domain",
         ["flow handler missing"] = t => t.Layer(0)["flowRef"]!["handlerId"] = "customerproject.fn.missing",
-        ["duplicate root for one flow source"] = t => { t.Layer(1)["parentLayerId"] = null; t.Layer(1)["flowRef"] = new JsonObject { ["containerId"] = LayerTree.IngressContainer }; t.Node(0, 1).Remove("opensLayerId"); },
-        ["descendant with flowRef"] = t => t.Layer(1)["flowRef"] = new JsonObject { ["containerId"] = LayerTree.IngressContainer },
+        ["container-only root"] = t => t.Layer(0)["flowRef"]!.AsObject().Remove("handlerId"),
+        ["blank handlerId"] = t => t.Layer(0)["flowRef"]!["handlerId"] = "",
+        ["duplicate root for one handler"] = t => { t.Layer(1)["parentLayerId"] = null; t.Layer(1)["flowRef"] = HandlerRef(LayerTree.IngressContainer, LayerTree.RootHandler); t.Node(0, 1).Remove("opensLayerId"); },
+        ["descendant with flowRef"] = t => t.Layer(1)["flowRef"] = HandlerRef(LayerTree.IngressContainer, LayerTree.RootHandler),
         ["flow entity missing"] = t => t.Node(0, 0)["flowEntityId"] = "q:missing",
         ["dangling edge endpoint"] = t => t.Edge(0, 0)["to"] = "comp:customerproject.missing",
         ["edge endpoint in another layer"] = t => t.Edge(0, 0)["to"] = t.Node(1, 1)["id"]!.GetValue<string>(),
@@ -570,7 +698,7 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
 
             Directory.Delete(tree.ProjectDir);
             Directory.CreateDirectory(tree.ProjectDir);
-            File.Copy(Path.Combine(elsewhere, "ingress-app.json"), Path.Combine(tree.ProjectDir, "ingress-app.json"));
+            File.Copy(Path.Combine(elsewhere, "fn.ingress.json"), Path.Combine(tree.ProjectDir, "fn.ingress.json"));
             File.CreateSymbolicLink(Path.Combine(tree.ProjectDir, "index.json"), Path.Combine(elsewhere, "index.json"));
             Assert.Equal(ArchitectureStatus.Invalid, tree.Load().Status);
 
@@ -607,6 +735,8 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     [InlineData("x.json/../../y.json", false)]
     [InlineData("x\\y.json", false)]
     [InlineData("x.txt", false)]
+    [InlineData("_obsolete.json", false)]
+    [InlineData("_obsolete/ingress-app.json", false)]
     public void Catalog_paths_must_be_sibling_basenames(string path, bool ok) => Assert.Equal(ok, ArchitecturePaths.IsSafeBasename(path));
 
     // ---- conceptual vs live (ADDENDA-011 §7: never injected into FlowGraph nodes, AllNodeIds or activity joins) ----
@@ -614,23 +744,23 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     private static FlowGraph Graph(ProjectRegistration r, IReadOnlyDictionary<string, EntityCounts>? depths = null) =>
         FlowGraphBuilder.Build(r, FlowScope.All, "LR", SbScope.Local, depths ?? new Dictionary<string, EntityCounts>(), new Dictionary<string, FlowPosition>(), ["SB_UNREACHABLE: x"]);
 
+    private static Dictionary<string, string> HandlerOpeners(FlowGraph g) =>
+        g.Nodes.Where(n => n.OpensLayerId is not null).ToDictionary(n => n.Id, n => n.OpensLayerId!);
+
     [Fact]
-    public void Linking_adds_only_opens_layer_id_and_never_architecture_ids()
+    public void Linking_adds_only_handler_opens_layer_id_and_never_architecture_ids()
     {
         var state = LoadReal();
         var depths = new Dictionary<string, EntityCounts> { ["q:customerproject-ingress"] = new(5, 2, "peek"), ["q:customerproject-snapshot"] = new(1, 0, "peek") };
         var before = Graph(LayerTree.Registration, depths);
         var after = ArchitectureService.Link(before, state);
 
-        Assert.Equal(new Dictionary<string, string?>
-        {
-            ["container:customerproject.api"] = ApiLayer,
-            ["container:customerproject.func-app"] = FuncLayer,
-            [LayerTree.IngressContainer] = LayerTree.RootLayer,
-        }, after.Containers.ToDictionary(c => c.Id, c => c.OpensLayerId));
-        Assert.All(after.Nodes, n => Assert.Null(n.OpensLayerId));
+        // ADDENDA-011.1: the five handler items open their roots; containers never do (the DTO has no such field).
+        Assert.Equal(CustomerprojectHandlerRoots, HandlerOpeners(after));
+        Assert.All(after.Nodes.Where(n => n.OpensLayerId is not null), n => Assert.Equal("handler", n.Kind));
+        Assert.Equal(before.Containers, after.Containers);
         // Nested layers are never Flow targets: only roots are linked.
-        Assert.DoesNotContain(after.Containers, c => c.OpensLayerId == DomainUpdateLayer);
+        Assert.DoesNotContain(after.Nodes, n => n.OpensLayerId == DomainUpdateLayer);
 
         // Byte-identical once the additive field is removed: schemaVersion, appIds, positions, edges, sb counts, warnings untouched.
         AssertOnlyOpensLayerIdAdded(before, after);
@@ -641,24 +771,35 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Price_flow_links_every_container_with_a_root_and_nothing_else()
+    public void Price_flow_links_the_eight_root_handlers_only()
     {
         var state = LoadPrice();
         var before = Graph(LayerTree.PriceRegistration);
         var after = ArchitectureService.Link(before, state);
-        Assert.Equal(state.Catalog!.ContainerLinks.OrderBy(kv => kv.Key),
-            after.Containers.Where(c => c.OpensLayerId is not null).Select(c => KeyValuePair.Create(c.Id, c.OpensLayerId!)).OrderBy(kv => kv.Key));
-        Assert.Equal(4, after.Containers.Count(c => c.OpensLayerId is not null));
-        Assert.All(after.Nodes, n => Assert.Null(n.OpensLayerId));
-        Assert.DoesNotContain(after.Containers, c => c.OpensLayerId == "layer:price.api.get-prices");
+        Assert.Equal(PriceHandlerRoots, HandlerOpeners(after));
+        // Intentionally no affordance: subscriptions, the five sub-* handlers and the four timers (deferred / no-layer).
+        Assert.All(PriceHandlersWithoutRoot, id => Assert.Null(after.Nodes.Single(n => n.Id == id).OpensLayerId));
+        Assert.Equal(before.Containers, after.Containers);
+        Assert.DoesNotContain(after.Nodes, n => n.OpensLayerId == "layer:price.api.get-prices");
         AssertOnlyOpensLayerIdAdded(before, after);
         Assert.DoesNotContain(FlowGraphBuilder.AllNodeIds(LayerTree.PriceRegistration), id => id.StartsWith("comp:") || id.StartsWith("layer:"));
+    }
+
+    [Fact]
+    public void Flow_container_dto_never_carries_opens_layer_id()
+    {
+        Assert.Null(typeof(FlowContainer).GetProperty("OpensLayerId"));
+        foreach (var (registration, state) in new[] { (LayerTree.Registration, LoadReal()), (LayerTree.PriceRegistration, LoadPrice()) })
+        {
+            var json = JsonNode.Parse(JsonSerializer.Serialize(ArchitectureService.Link(Graph(registration), state), RegistrationJson.Options))!;
+            Assert.All(json["containers"]!.AsArray(), c => Assert.False(c!.AsObject().ContainsKey("opensLayerId")));
+            Assert.Contains(json["nodes"]!.AsArray(), n => n!.AsObject().ContainsKey("opensLayerId"));
+        }
     }
 
     private static void AssertOnlyOpensLayerIdAdded(FlowGraph before, FlowGraph after)
     {
         var a = JsonNode.Parse(JsonSerializer.Serialize(after, RegistrationJson.Options))!;
-        foreach (var c in a["containers"]!.AsArray()) c!.AsObject().Remove("opensLayerId");
         foreach (var n in a["nodes"]!.AsArray()) n!.AsObject().Remove("opensLayerId");
         Assert.Equal(JsonSerializer.Serialize(before, RegistrationJson.Options), a.ToJsonString());
     }
@@ -702,6 +843,25 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         LoadReal();
         LoadPrice();
         Assert.All(layerHashes, kv => Assert.Equal(kv.Value, Sha256(kv.Key))); // GET-side loading never writes or repairs
+    }
+
+    [Fact]
+    public void Registration_container_or_handler_carrying_opens_layer_id_is_rejected()
+    {
+        // ADDENDA-011.1 V-011: Explore links come from the sidecar only; the registration schema has no opensLayerId anywhere.
+        var dir = Directory.CreateTempSubdirectory("dsp-arch-reg-").FullName;
+        try
+        {
+            foreach (var kind in new[] { "containers", "handlers" })
+            {
+                var reg = JsonNode.Parse(File.ReadAllText(RepoPaths.Registration))!;
+                reg[kind]![0]!["opensLayerId"] = LayerTree.RootLayer;
+                var path = Path.Combine(dir, $"{kind}.json");
+                File.WriteAllText(path, reg.ToJsonString());
+                Assert.Throws<RegistrationValidationException>(() => new RegistrationLoader(RepoPaths.Schema).Load(path));
+            }
+        }
+        finally { Directory.Delete(dir, recursive: true); }
     }
 
     private static string Sha256(string path) => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));

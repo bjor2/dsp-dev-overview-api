@@ -8,10 +8,11 @@
   "summary": "Inside the Api compute container: four controllers are the HTTP trigger surface; create/update, manual association and image services do synchronous work, while bulk/operator work is handed to Functions via the command queue. Arrows are responsibilities, not observed requests.",
   "parentLayerId": null,
   "flowRef": {
-    "containerId": "container:customerproject.api"
+    "containerId": "container:customerproject.api",
+    "handlerId": "customerproject.api.http"
   },
   "scope": "both",
-  "reviewedAt": "2026-11-06T11:30:00+01:00",
+  "reviewedAt": "2026-11-06T16:01:48+01:00",
   "sources": [
     {
       "kind": "registration",

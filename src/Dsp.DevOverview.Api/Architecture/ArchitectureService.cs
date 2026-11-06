@@ -49,17 +49,16 @@ public sealed class ArchitectureService(OverviewService overview, string layersR
     public FlowGraph Link(OverviewProject p, FlowGraph graph) => Link(graph, For(p));
 
     /// <summary>
-    /// Additive Flow drill links from validated root flowRefs only: <c>opensLayerId</c> on the container (or on the handler node for a
-    /// handler-bound root). Nothing else in the graph changes; invalid architecture adds its warning and no links.
+    /// Additive Flow drill links from validated root flowRefs only: <c>opensLayerId</c> on the handler node each root binds
+    /// (ADDENDA-011.1). Containers never carry it. Nothing else in the graph changes; invalid architecture adds its warning and no links.
     /// </summary>
     public static FlowGraph Link(FlowGraph graph, ArchitectureState state)
     {
         if (state.Catalog is not { } c)
             return state.Warnings.Count == 0 ? graph : graph with { Warnings = [.. graph.Warnings, .. state.Warnings] };
-        if (c.ContainerLinks.Count == 0 && c.HandlerLinks.Count == 0) return graph;
+        if (c.HandlerLinks.Count == 0) return graph;
         return graph with
         {
-            Containers = graph.Containers.Select(x => c.ContainerLinks.TryGetValue(x.Id, out var l) ? x with { OpensLayerId = l } : x).ToList(),
             Nodes = graph.Nodes.Select(n => n.Kind == "handler" && c.HandlerLinks.TryGetValue(n.Id, out var l) ? n with { OpensLayerId = l } : n).ToList(),
         };
     }

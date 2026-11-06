@@ -48,7 +48,7 @@ public sealed class ArchitectureApiTests : IDisposable
     }
 
     private const string Price = "/api/projects/price.dev";
-    private const string FuncLayer = "layer:customerproject.func-app";
+    private const string DomainLayer = "layer:customerproject.fn.domain";
     private const string DomainUpdateLayer = "layer:customerproject.func-app.domain-update";
     private const string ApiLayer = "layer:customerproject.api";
 
@@ -57,8 +57,19 @@ public sealed class ArchitectureApiTests : IDisposable
     private static string[] Ids(JsonElement array, string property = "layerId") =>
         array.EnumerateArray().Select(x => x.GetProperty(property).GetString()!).ToArray();
 
-    private static JsonElement Container(JsonElement flow, string id) =>
-        flow.GetProperty("containers").EnumerateArray().Single(c => c.GetProperty("id").GetString() == id);
+    /// <summary>Flow handler node id → opensLayerId, for every node that carries one.</summary>
+    private static Dictionary<string, string> Openers(JsonElement flow) =>
+        flow.GetProperty("nodes").EnumerateArray().Where(n => n.TryGetProperty("opensLayerId", out _))
+            .ToDictionary(n => n.GetProperty("id").GetString()!, n => n.GetProperty("opensLayerId").GetString()!);
+
+    /// <summary>ADDENDA-011.1: Explore is on handler items only; containers never carry opensLayerId and only handler nodes do.</summary>
+    private static void AssertHandlerOnlyOpeners(JsonElement flow, IReadOnlyDictionary<string, string> expected)
+    {
+        Assert.Equal(expected.OrderBy(kv => kv.Key), Openers(flow).OrderBy(kv => kv.Key));
+        Assert.All(flow.GetProperty("nodes").EnumerateArray().Where(n => n.TryGetProperty("opensLayerId", out _)),
+            n => Assert.Equal("handler", n.GetProperty("kind").GetString()));
+        Assert.All(flow.GetProperty("containers").EnumerateArray(), c => Assert.False(c.TryGetProperty("opensLayerId", out _)));
+    }
 
     private static void AssertNoMachinePaths(string raw, params string[] extra)
     {
@@ -90,11 +101,15 @@ public sealed class ArchitectureApiTests : IDisposable
         var (status, index, raw) = await Get(http, $"{P}/architecture");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal(("customerproject.dev", 1), (index.GetProperty("projectId").GetString(), index.GetProperty("schemaVersion").GetInt32()));
-        Assert.Equal([ApiLayer, FuncLayer, LayerTree.RootLayer], Ids(index.GetProperty("roots")));
+        Assert.Equal(ArchitectureLoaderTests.CustomerprojectHandlerRoots.Values.Order(StringComparer.Ordinal), Ids(index.GetProperty("roots")));
+        // Every root's flowRef names its handler item (always serialized) and that handler's container.
+        Assert.All(index.GetProperty("roots").EnumerateArray(), r => Assert.Equal(
+            ArchitectureLoaderTests.CustomerprojectHandlerRoots[r.GetProperty("flowRef").GetProperty("handlerId").GetString()!], r.GetProperty("layerId").GetString()));
         var root = index.GetProperty("roots").EnumerateArray().Single(r => r.GetProperty("layerId").GetString() == LayerTree.RootLayer);
-        Assert.Equal("Ingress — import and snapshot responsibilities", root.GetProperty("title").GetString());
+        Assert.Equal("INGRESS — importing M3 change events", root.GetProperty("title").GetString());
         Assert.Equal(LayerTree.IngressContainer, root.GetProperty("flowRef").GetProperty("containerId").GetString());
-        Assert.False(root.GetProperty("flowRef").TryGetProperty("handlerId", out _));
+        Assert.Equal(LayerTree.RootHandler, root.GetProperty("flowRef").GetProperty("handlerId").GetString());
+        Assert.Equal(["containerId", "handlerId"], root.GetProperty("flowRef").EnumerateObject().Select(p => p.Name));
         Assert.Equal(0, index.GetProperty("warnings").GetArrayLength());
         Assert.Equal(["catalogHash", "projectId", "roots", "schemaVersion", "warnings"], index.EnumerateObject().Select(p => p.Name).Order());
         Assert.Matches("^sha256:[0-9a-f]{64}$", index.GetProperty("catalogHash").GetString());
@@ -105,9 +120,10 @@ public sealed class ArchitectureApiTests : IDisposable
         Assert.Equal(["breadcrumbs", "children", "layer", "projectId", "rootFlowRef", "schemaVersion", "warnings"],
             layer.EnumerateObject().Select(p => p.Name).Order());
         var doc = layer.GetProperty("layer");
-        Assert.Equal((LayerTree.RootLayer, 7, 9), (doc.GetProperty("id").GetString(), doc.GetProperty("nodes").GetArrayLength(), doc.GetProperty("edges").GetArrayLength()));
+        Assert.Equal((LayerTree.RootLayer, 4, 3), (doc.GetProperty("id").GetString(), doc.GetProperty("nodes").GetArrayLength(), doc.GetProperty("edges").GetArrayLength()));
         Assert.False(doc.TryGetProperty("$schema", out _));
         Assert.Equal(LayerTree.IngressContainer, layer.GetProperty("rootFlowRef").GetProperty("containerId").GetString());
+        Assert.Equal(LayerTree.RootHandler, layer.GetProperty("rootFlowRef").GetProperty("handlerId").GetString());
         var crumb = Assert.Single(layer.GetProperty("breadcrumbs").EnumerateArray());
         Assert.Equal((LayerTree.RootLayer, root.GetProperty("title").GetString()), (crumb.GetProperty("layerId").GetString(), crumb.GetProperty("title").GetString()));
         Assert.Equal(0, layer.GetProperty("children").GetArrayLength());
@@ -118,18 +134,15 @@ public sealed class ArchitectureApiTests : IDisposable
 
         (status, var flow, _) = await Get(http, $"{P}/flow");
         Assert.Equal(HttpStatusCode.OK, status);
-        Assert.Equal(LayerTree.RootLayer, Container(flow, LayerTree.IngressContainer).GetProperty("opensLayerId").GetString());
-        Assert.Equal(FuncLayer, Container(flow, "container:customerproject.func-app").GetProperty("opensLayerId").GetString());
-        Assert.Equal(ApiLayer, Container(flow, "container:customerproject.api").GetProperty("opensLayerId").GetString());
-        Assert.All(flow.GetProperty("nodes").EnumerateArray(), n => Assert.False(n.TryGetProperty("opensLayerId", out _)));
+        AssertHandlerOnlyOpeners(flow, ArchitectureLoaderTests.CustomerprojectHandlerRoots);
         await AssertBaseFlow(http);
     }
 
     [Fact]
-    public async Task Real_customerproject_func_app_opens_nested_domain_update_with_inherited_root_flow_ref()
+    public async Task Real_customerproject_domain_opens_nested_domain_update_with_inherited_root_flow_ref()
     {
         var http = Client();
-        var (status, func, _) = await Get(http, Layer(FuncLayer));
+        var (status, func, _) = await Get(http, Layer(DomainLayer));
         Assert.Equal(HttpStatusCode.OK, status);
         var child = Assert.Single(func.GetProperty("children").EnumerateArray());
         Assert.Equal((DomainUpdateLayer, "comp:customerproject.func.snapshot-apply"),
@@ -139,8 +152,9 @@ public sealed class ArchitectureApiTests : IDisposable
 
         (status, var nested, var raw) = await Get(http, Layer(DomainUpdateLayer));
         Assert.Equal(HttpStatusCode.OK, status);
-        Assert.Equal([FuncLayer, DomainUpdateLayer], Ids(nested.GetProperty("breadcrumbs")));
+        Assert.Equal([DomainLayer, DomainUpdateLayer], Ids(nested.GetProperty("breadcrumbs")));
         Assert.Equal("container:customerproject.func-app", nested.GetProperty("rootFlowRef").GetProperty("containerId").GetString());
+        Assert.Equal("customerproject.fn.domain", nested.GetProperty("rootFlowRef").GetProperty("handlerId").GetString());
         Assert.False(nested.GetProperty("layer").TryGetProperty("flowRef", out _));
         Assert.Equal(0, nested.GetProperty("children").GetArrayLength());
         AssertNoMachinePaths(raw);
@@ -152,13 +166,15 @@ public sealed class ArchitectureApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Real_price_catalog_serves_four_roots_nested_get_prices_and_flow_links()
+    public async Task Real_price_catalog_serves_eight_handler_roots_nested_get_prices_and_handler_flow_links()
     {
         var http = Client();
         var (status, index, raw) = await Get(http, $"{Price}/architecture");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal("price.dev", index.GetProperty("projectId").GetString());
-        Assert.Equal(["layer:price.api", "layer:price.api-batch", "layer:price.func-app", "layer:price.ingress-app"], Ids(index.GetProperty("roots")));
+        Assert.Equal(ArchitectureLoaderTests.PriceHandlerRoots.Values.Order(StringComparer.Ordinal), Ids(index.GetProperty("roots")));
+        Assert.All(index.GetProperty("roots").EnumerateArray(), r => Assert.Equal(
+            ArchitectureLoaderTests.PriceHandlerRoots[r.GetProperty("flowRef").GetProperty("handlerId").GetString()!], r.GetProperty("layerId").GetString()));
         Assert.Equal(0, index.GetProperty("warnings").GetArrayLength());
         Assert.Matches("^sha256:[0-9a-f]{64}$", index.GetProperty("catalogHash").GetString());
         var (_, customerproject, _) = await Get(http, $"{P}/architecture");
@@ -169,6 +185,7 @@ public sealed class ArchitectureApiTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal(["layer:price.api", "layer:price.api.get-prices"], Ids(nested.GetProperty("breadcrumbs")));
         Assert.Equal("container:price.api", nested.GetProperty("rootFlowRef").GetProperty("containerId").GetString());
+        Assert.Equal("price.api.http", nested.GetProperty("rootFlowRef").GetProperty("handlerId").GetString());
         AssertNoMachinePaths(raw);
         var (_, api, _) = await Get(http, Layer("layer:price.api", Price));
         var child = Assert.Single(api.GetProperty("children").EnumerateArray());
@@ -181,15 +198,17 @@ public sealed class ArchitectureApiTests : IDisposable
 
         (status, var flow, _) = await Get(http, $"{Price}/flow?scope=all");
         Assert.Equal(HttpStatusCode.OK, status);
-        Assert.All(flow.GetProperty("containers").EnumerateArray(), c =>
-            Assert.Equal(c.GetProperty("id").GetString()!.Replace("container:", "layer:"), c.GetProperty("opensLayerId").GetString()));
         Assert.Equal(4, flow.GetProperty("containers").GetArrayLength());
-        Assert.All(flow.GetProperty("nodes").EnumerateArray(), n => Assert.False(n.TryGetProperty("opensLayerId", out _)));
+        AssertHandlerOnlyOpeners(flow, ArchitectureLoaderTests.PriceHandlerRoots);
+        // Deferred (subscriptions, sub-*) and no-layer (timers) handlers are in the Flow but show no Explore affordance.
+        var nodeIds = flow.GetProperty("nodes").EnumerateArray().Select(n => n.GetProperty("id").GetString()).ToHashSet();
+        Assert.All(ArchitectureLoaderTests.PriceHandlersWithoutRoot, id => Assert.Contains(id, nodeIds));
+        Assert.DoesNotContain(Openers(flow).Keys, ArchitectureLoaderTests.PriceHandlersWithoutRoot.Contains);
         Assert.DoesNotContain(flow.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.StartsWith("ARCHITECTURE"));
 
         // Cross-project ids never resolve: a real price id on the customerproject route is 404, and vice versa.
         Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync(Layer("layer:price.api"))).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync(Layer(FuncLayer, Price))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync(Layer(DomainLayer, Price))).StatusCode);
     }
 
     [Fact]
@@ -229,7 +248,9 @@ public sealed class ArchitectureApiTests : IDisposable
         // Ids are looked up in the validated catalog only: file names, paths and traversal never reach the file system.
         string[] probes = ["layer:customerproject.missing", "ingress-app.json", "index.json", "../registrations/customerproject.dev.json",
             "../../registrations/customerproject.dev.json", "/etc/passwd", RepoPaths.Registration, "layer:customerproject.ingress-app/../index",
-            "layer:price.ingress-app", "LAYER:CUSTOMERPROJECT.INGRESS-APP"];
+            "layer:price.ingress-app", "LAYER:CUSTOMERPROJECT.FN.INGRESS",
+            // ADDENDA-011.1 retired container roots: ignored, never remapped onto the new handler roots.
+            "layer:customerproject.ingress-app", "layer:customerproject.func-app", "_obsolete/ingress-app.json", "fn.ingress.json"];
         foreach (var id in probes)
         {
             var (status, err, raw) = await Get(http, Layer(id));
@@ -299,10 +320,30 @@ public sealed class ArchitectureApiTests : IDisposable
 
         // Other projects are unaffected: price has a valid catalog in the same layers root and keeps serving it.
         (status, var price, _) = await Get(http, $"{Price}/architecture");
-        Assert.Equal((HttpStatusCode.OK, 0, 4), (status, price.GetProperty("warnings").GetArrayLength(), price.GetProperty("roots").GetArrayLength()));
+        Assert.Equal((HttpStatusCode.OK, 0, 8), (status, price.GetProperty("warnings").GetArrayLength(), price.GetProperty("roots").GetArrayLength()));
         Assert.Equal(HttpStatusCode.OK, (await http.GetAsync(Layer("layer:price.api.get-prices", Price))).StatusCode);
         (_, var priceFlow, _) = await Get(http, $"{Price}/flow?scope=all");
-        Assert.All(priceFlow.GetProperty("containers").EnumerateArray(), c => Assert.True(c.TryGetProperty("opensLayerId", out _)));
+        AssertHandlerOnlyOpeners(priceFlow, ArchitectureLoaderTests.PriceHandlerRoots);
+    }
+
+    [Fact]
+    public async Task Container_only_root_rejects_the_catalog_and_flow_has_no_explore()
+    {
+        var tree = Tree(LayerTree.Real());
+        tree.Layer(tree.LayerIndex(LayerTree.RootLayer))["flowRef"]!.AsObject().Remove("handlerId");
+        tree.Write();
+        var http = Client(tree.LayersRoot);
+
+        var (status, index, raw) = await Get(http, $"{P}/architecture");
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal(0, index.GetProperty("roots").GetArrayLength());
+        Assert.Contains("V-011: fn.ingress.json root has no flowRef.handlerId", Assert.Single(index.GetProperty("warnings").EnumerateArray()).GetString());
+        AssertNoMachinePaths(raw, tree.LayersRoot);
+
+        await AssertBaseFlow(http);
+        (_, var flow, raw) = await Get(http, $"{P}/flow");
+        Assert.DoesNotContain("opensLayerId", raw);
+        Assert.Contains(flow.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.StartsWith("ARCHITECTURE_INVALID: "));
     }
 
     [Fact]
@@ -373,7 +414,7 @@ public sealed class ArchitectureApiTests : IDisposable
         string[] live = ["sb", "activeCount", "deadLetterCount", "dlqHot", "activity", "position", "positionSource"];
         foreach (var item in layer["nodes"]!.AsArray().Concat(layer["edges"]!.AsArray()))
             Assert.DoesNotContain(item!.AsObject(), p => live.Contains(p.Key));
-        var authored = JsonNode.Parse(File.ReadAllText(Path.Combine(RepoPaths.ArchitectureLayers, "customerproject", "ingress-app.json")))!.AsObject();
+        var authored = JsonNode.Parse(File.ReadAllText(Path.Combine(RepoPaths.ArchitectureLayers, "customerproject", "fn.ingress.json")))!.AsObject();
         authored.Remove("$schema");
         Assert.True(JsonNode.DeepEquals(authored, layer), "served layer must be the authored document minus $schema");
     }

@@ -6,16 +6,24 @@
   "registrationId": "customerproject.dev",
   "layers": [
     {
-      "id": "layer:customerproject.ingress-app",
-      "path": "ingress-app.json"
+      "id": "layer:customerproject.fn.ingress",
+      "path": "fn.ingress.json"
     },
     {
-      "id": "layer:customerproject.func-app",
-      "path": "func-app.json"
+      "id": "layer:customerproject.fn.snapshot",
+      "path": "fn.snapshot.json"
+    },
+    {
+      "id": "layer:customerproject.fn.domain",
+      "path": "fn.domain.json"
     },
     {
       "id": "layer:customerproject.func-app.domain-update",
       "path": "func-app.domain-update.json"
+    },
+    {
+      "id": "layer:customerproject.fn.commands",
+      "path": "fn.commands.json"
     },
     {
       "id": "layer:customerproject.api",

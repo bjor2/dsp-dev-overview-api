@@ -4,14 +4,15 @@
   "documentType": "architecture-layer",
   "id": "layer:price.api",
   "project": "price",
-  "title": "Api — price queries and admin",
+  "title": "Api \u2014 price queries and admin",
   "summary": "Inside the price Api container: versioned controllers delegate to a single price reader that chooses DSP calculation or M3 pricing per tenant; admin deletes are handed to Functions.",
   "parentLayerId": null,
   "flowRef": {
-    "containerId": "container:price.api"
+    "containerId": "container:price.api",
+    "handlerId": "price.api.http"
   },
   "scope": "both",
-  "reviewedAt": "2026-11-06T12:15:00+01:00",
+  "reviewedAt": "2026-11-06T16:04:10+01:00",
   "sources": [
     {
       "kind": "registration",
@@ -23,14 +24,14 @@
     {
       "kind": "repo",
       "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-      "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+      "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
       "confidence": "confirmed",
       "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
     },
     {
       "kind": "repo",
       "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/AdminController.cs",
-      "note": "Lines 14–44: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
+      "note": "Lines 14\u201344: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
       "confidence": "confirmed",
       "revision": "sha256:d5d3289326ec76da526f3b16a67b6940adc3792b1e54e26176b5e2391319d5d9"
     },
@@ -39,7 +40,7 @@
       "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22777574",
       "revision": "version:6",
       "confidence": "confirmed",
-      "note": "Product/design intent: DSP Price subscribes to M3 key tables and provides price simulation outside M3 (avoids OIS320MI cost/limits); for ecommerce + customer price list tools. Campaign special case CMNO→CSYTAB. Not deployment proof."
+      "note": "Product/design intent: DSP Price subscribes to M3 key tables and provides price simulation outside M3 (avoids OIS320MI cost/limits); for ecommerce + customer price list tools. Campaign special case CMNO\u2192CSYTAB. Not deployment proof."
     },
     {
       "kind": "confluence",
@@ -65,7 +66,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/PricesController.cs",
-          "note": "Lines 17–41: V3 prices endpoints via IPriceReader, customer reader, unit/currency helpers, cost price reader.",
+          "note": "Lines 17\u201341: V3 prices endpoints via IPriceReader, customer reader, unit/currency helpers, cost price reader.",
           "confidence": "confirmed",
           "revision": "sha256:7a4455e2a75de43a0484fa63c3611d57e854eca9f79dcd97a7f03ca3d41dfbd2"
         },
@@ -83,7 +84,7 @@
     },
     {
       "id": "comp:price.api.price-controllers",
-      "label": "Price controllers (V1–V3)",
+      "label": "Price controllers (V1\u2013V3)",
       "kind": "component",
       "responsibility": "get-prices endpoints: legacy V1/V2, V3, V3 /dsp and /m3api variants; all delegate to the price reader.",
       "boundary": "inside",
@@ -91,35 +92,35 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V1/Controllers/PricesController.cs",
-          "note": "Lines 12–97: legacy V1 prices via IPriceReader.",
+          "note": "Lines 12\u201397: legacy V1 prices via IPriceReader.",
           "confidence": "confirmed",
           "revision": "sha256:9e811d553d2b0ec984786e7c6fc947fce625bab828a45afb3094792fb25163ca"
         },
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V2/Controllers/PricesController.cs",
-          "note": "Lines 11–30: legacy V2 prices via IPriceReader.",
+          "note": "Lines 11\u201330: legacy V2 prices via IPriceReader.",
           "confidence": "confirmed",
           "revision": "sha256:2fb5bc1169abf8833a4f9c28d74cc483fcf8ecf6bec6c8d40f8e1fa1a852739e"
         },
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/PricesController.cs",
-          "note": "Lines 17–41: V3 prices endpoints via IPriceReader, customer reader, unit/currency helpers, cost price reader.",
+          "note": "Lines 17\u201341: V3 prices endpoints via IPriceReader, customer reader, unit/currency helpers, cost price reader.",
           "confidence": "confirmed",
           "revision": "sha256:7a4455e2a75de43a0484fa63c3611d57e854eca9f79dcd97a7f03ca3d41dfbd2"
         },
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/PricesDspController.cs",
-          "note": "Lines 18–73: prices/dsp endpoints.",
+          "note": "Lines 18\u201373: prices/dsp endpoints.",
           "confidence": "confirmed",
           "revision": "sha256:167acd4257fe2f24844f9f9ca0b8ea00efde4bd639f57f5c0a8ba502e3966412"
         },
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/PricesM3ApiController.cs",
-          "note": "Lines 18–73: prices/m3api endpoints.",
+          "note": "Lines 18\u201373: prices/m3api endpoints.",
           "confidence": "confirmed",
           "revision": "sha256:ac643492f1fed57e885b6e41023b67844768f40b7ef76d748bddb9ccd048a5af"
         }
@@ -136,7 +137,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/CampaignsController.cs",
-          "note": "Lines 11–33: campaigns via IPriceReader.",
+          "note": "Lines 11\u201333: campaigns via IPriceReader.",
           "confidence": "confirmed",
           "revision": "sha256:2827284700a25d2222ee6f4fd4ede8a5a7e4a17258e545c4f2b945b74e9d9106"
         }
@@ -153,7 +154,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/SalesDepartmentController.cs",
-          "note": "Lines 15–28: price report via IPriceReportGenerator.",
+          "note": "Lines 15\u201328: price report via IPriceReportGenerator.",
           "confidence": "confirmed",
           "revision": "sha256:226a19de70f5988f8b0f989798bb8043b761612dd853f62d1815d455d471c62e"
         }
@@ -172,7 +173,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/AdminController.cs",
-          "note": "Lines 14–44: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
+          "note": "Lines 14\u201344: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
           "confidence": "confirmed",
           "revision": "sha256:d5d3289326ec76da526f3b16a67b6940adc3792b1e54e26176b5e2391319d5d9"
         }
@@ -189,7 +190,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-          "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+          "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
           "confidence": "confirmed",
           "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
         }
@@ -242,7 +243,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/AdminController.cs",
-          "note": "Lines 14–44: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
+          "note": "Lines 14\u201344: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
           "confidence": "confirmed",
           "revision": "sha256:d5d3289326ec76da526f3b16a67b6940adc3792b1e54e26176b5e2391319d5d9"
         },
@@ -272,7 +273,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/PricesController.cs",
-          "note": "Lines 17–41: V3 prices endpoints via IPriceReader, customer reader, unit/currency helpers, cost price reader.",
+          "note": "Lines 17\u201341: V3 prices endpoints via IPriceReader, customer reader, unit/currency helpers, cost price reader.",
           "confidence": "confirmed",
           "revision": "sha256:7a4455e2a75de43a0484fa63c3611d57e854eca9f79dcd97a7f03ca3d41dfbd2"
         }
@@ -291,7 +292,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/CampaignsController.cs",
-          "note": "Lines 11–33: campaigns via IPriceReader.",
+          "note": "Lines 11\u201333: campaigns via IPriceReader.",
           "confidence": "confirmed",
           "revision": "sha256:2827284700a25d2222ee6f4fd4ede8a5a7e4a17258e545c4f2b945b74e9d9106"
         }
@@ -310,7 +311,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/SalesDepartmentController.cs",
-          "note": "Lines 15–28: price report via IPriceReportGenerator.",
+          "note": "Lines 15\u201328: price report via IPriceReportGenerator.",
           "confidence": "confirmed",
           "revision": "sha256:226a19de70f5988f8b0f989798bb8043b761612dd853f62d1815d455d471c62e"
         }
@@ -329,7 +330,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/AdminController.cs",
-          "note": "Lines 14–44: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
+          "note": "Lines 14\u201344: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
           "confidence": "confirmed",
           "revision": "sha256:d5d3289326ec76da526f3b16a67b6940adc3792b1e54e26176b5e2391319d5d9"
         }
@@ -348,14 +349,14 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V1/Controllers/PricesController.cs",
-          "note": "Lines 12–97: legacy V1 prices via IPriceReader.",
+          "note": "Lines 12\u201397: legacy V1 prices via IPriceReader.",
           "confidence": "confirmed",
           "revision": "sha256:9e811d553d2b0ec984786e7c6fc947fce625bab828a45afb3094792fb25163ca"
         },
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/PricesController.cs",
-          "note": "Lines 17–41: V3 prices endpoints via IPriceReader, customer reader, unit/currency helpers, cost price reader.",
+          "note": "Lines 17\u201341: V3 prices endpoints via IPriceReader, customer reader, unit/currency helpers, cost price reader.",
           "confidence": "confirmed",
           "revision": "sha256:7a4455e2a75de43a0484fa63c3611d57e854eca9f79dcd97a7f03ca3d41dfbd2"
         }
@@ -374,7 +375,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/CampaignsController.cs",
-          "note": "Lines 11–33: campaigns via IPriceReader.",
+          "note": "Lines 11\u201333: campaigns via IPriceReader.",
           "confidence": "confirmed",
           "revision": "sha256:2827284700a25d2222ee6f4fd4ede8a5a7e4a17258e545c4f2b945b74e9d9106"
         }
@@ -393,14 +394,14 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-          "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+          "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
           "confidence": "confirmed",
           "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
         },
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/OptimeraDsp.cs",
-          "note": "Lines 16–105: DSP strategy uses DB readers + DspCalculationPriceRetriever.",
+          "note": "Lines 16\u2013105: DSP strategy uses DB readers + DspCalculationPriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:6900399d6fdeb8d7943e21dac80b069674eb8fe851128f29c377705c67632dcb"
         }
@@ -419,7 +420,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/M3PriceRetriever.cs",
-          "note": "Lines 11–14: M3 prices via IErpPriceClient.",
+          "note": "Lines 11\u201314: M3 prices via IErpPriceClient.",
           "confidence": "confirmed",
           "revision": "sha256:798e822f946b359892277999a59ba9e2a74d5558f6f50c3ebda5bdfea7cf95eb"
         },
@@ -445,7 +446,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Api/V3/Controllers/AdminController.cs",
-          "note": "Lines 14–44: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
+          "note": "Lines 14\u201344: DspAdmin delete-nexstep-pricelist enqueues DeleteNexstepPriceList; also injects IIngressQueueClient.",
           "confidence": "confirmed",
           "revision": "sha256:d5d3289326ec76da526f3b16a67b6940adc3792b1e54e26176b5e2391319d5d9"
         }

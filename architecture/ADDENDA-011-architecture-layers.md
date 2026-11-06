@@ -109,3 +109,15 @@ Rules applied: Flow v2 invariant enforced in fixtures as **V-008** (no boundary 
 ## Changelog
 - v1.1 (2026-11-06): Team Lead locks recorded (forest + API baseline, auto-layout first, positions deferred). Added customerproject func-app, func-app.domain-update (nested), api; price catalog with func-app, ingress-app, api, api.get-prices (nested), api-batch. Verifier extended to multi-project catalogs, real depth ≥ 2, V-008 and a 19th negative fixture.
 - v1 (2026-11-06): contract + ingress-app worked example.
+
+## ADDENDA-011.1 — per Flow item roots (2026-11-06, Team Lead requirement) — supersedes §3 root rule, §6 V-006 root-source wording, §7 apos keys, UI container Explore
+Separate from the approved PR3 layouts release; no deploy.
+- **Explore targets are Flow handler items** (the nodes inside blue containers). Blue containers are never Explore targets and never carry `opensLayerId`.
+- Root (`parentLayerId: null`) requires `flowRef: { containerId, handlerId }`; `handlerId` **required** and must belong to `containerId` in the registration. Container-only roots are invalid.
+- Exactly one root per handlerId; handlers without evidence-backed content get no root (`deferred`/`no-layer` in the map) — no empty shells.
+- Descendants unchanged: one `parentLayerId`, no flowRef, exactly one inside-component opener in the parent.
+- **V-011 (new):** reject roots lacking handlerId; handlerId dangling or in another container; two roots claiming the same handler; `opensLayerId` on a container DTO/registration container; explicit handler opensLayerId disagreeing with the sidecar.
+- **API:** Flow GET optional `opensLayerId` is emitted on **handler DTOs only**, derived from root.flowRef.handlerId. Removed from container DTO. Architecture index `roots[].flowRef` always includes handlerId.
+- **Positions:** saved layout namespace is `dsp-arch-pos:v1:{project}:{env}:{layerId}` (replaces the proposed `apos:` keys in §7; no apos: keys exist). Re-cut layerIds are **ignored** (not deleted, not remapped, not recycled): `layer:customerproject.ingress-app`, `layer:customerproject.func-app`, `layer:price.ingress-app`, `layer:price.func-app`. Kept (semantics unchanged): `layer:customerproject.api`, `layer:customerproject.func-app.domain-update`, `layer:price.api`, `layer:price.api.get-prices`, `layer:price.api-batch`.
+- Mapping: `NOTE-ADDENDA-011-flow-item-layer-map.md`. Content migration pending: `drafts/PENDING-per-item-roots.md`. Schema: roots require handlerId (if/then). Registration schema unchanged.
+- Verifier: default strict → FAIL (CONTRACT-PENDING) until content re-cut; `--allow-legacy-container-roots` validates legacy forest + all new-contract fixtures.

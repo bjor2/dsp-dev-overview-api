@@ -1,0 +1,156 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.fn.blob-optimera",
+  "project": "price",
+  "title": "BLOB-OPTIMERA \u2014 Optimera CSV import",
+  "summary": "Explore of the Optimera blob-trigger handler inside the price Functions container: CSV files in pricedumpfromoptimera (written by Ingress SNAPSHOT full reload) are imported by filename type into the price database.",
+  "parentLayerId": null,
+  "flowRef": {
+    "containerId": "container:price.func-app",
+    "handlerId": "price.fn.blob-optimera"
+  },
+  "scope": "both",
+  "reviewedAt": "2026-11-06T16:04:10+01:00",
+  "sources": [
+    {
+      "kind": "registration",
+      "ref": "dev-overview/architecture/registrations/price.dev.json",
+      "note": "price.fn.blob-optimera handler (b:pricedumpfromoptimera) in container func-app.",
+      "confidence": "confirmed",
+      "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs",
+      "note": "Lines 10\u201340: blob trigger on pricedumpfromoptimera; CSV type by filename -> IPriceImporter.",
+      "confidence": "confirmed",
+      "revision": "sha256:bf43c0f8eb2d9eeffe66a8a563ada87ca23c75ea35b64736b5713093dca4f0ba"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774388",
+      "revision": "version:2",
+      "confidence": "confirmed",
+      "note": "Historical 2021 overview: ADF nightly CSV dump \u2192 blob trigger \u2192 Function \u2192 SQL; Web API via APIM/Okta; names web-870-*/func-870-*/sql; ASB messages n/a. Design intent / historical ops \u2014 not proof of current topology."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256 (Team Lead ruled HEAD check unnecessary).",
+    "Write-side storage type/topology beyond EF registration is not asserted.",
+    "Unresolved conflict: Confluence 22774388 v2 describes ADF nightly CSV ingress and ASB messages as n/a, while registration + PICO design (22773861 v67) and current handlers imply ASB queues/PICO \u2014 which path is live is unresolved; do not invent.",
+    "Re-cut from retired root layer:price.func-app (ADDENDA-011.1 per-handler roots); old layer id is ignored for dsp-arch-pos and not recycled. New split layers start auto-layout.",
+    "Responsibilities of sibling handlers in the same container are shown only as boundary queue/store nodes; no cross-root edges are drawn."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.func.optimera-files",
+      "label": "Optimera file container",
+      "kind": "store",
+      "responsibility": "Blob container pricedumpfromoptimera; written by Ingress full reload, read by the blob trigger.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs",
+          "note": "Lines 10\u201340: blob trigger on pricedumpfromoptimera; CSV type by filename -> IPriceImporter.",
+          "confidence": "confirmed",
+          "revision": "sha256:bf43c0f8eb2d9eeffe66a8a563ada87ca23c75ea35b64736b5713093dca4f0ba"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Import/Configuration/ImportConfiguration.cs",
+          "note": "Line 8: OptimeraFilesContainerName = pricedumpfromoptimera.",
+          "confidence": "confirmed",
+          "revision": "sha256:f6b1e8618334f3d03ee4d2a18ea53efc2ed0f89167ba81ffcb7444ed4cab4d82"
+        },
+        {
+          "kind": "registration",
+          "ref": "dev-overview/architecture/registrations/price.dev.json",
+          "note": "b:pricedumpfromoptimera triggers price.fn.blob-optimera.",
+          "confidence": "confirmed",
+          "revision": "sha256:ec39d09048cdbbc9236c6ffeaa7ec4e3f1fd6536bf9ca9bac8785c3d2daa8046"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price",
+      "flowEntityId": "b:pricedumpfromoptimera"
+    },
+    {
+      "id": "comp:price.func.file-import",
+      "label": "Optimera CSV import",
+      "kind": "component",
+      "responsibility": "Imports ValidProducts/Campaigns/CampaignPrices/... CSV snapshots via IPriceImporter.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs",
+          "note": "Lines 10\u201340: blob trigger on pricedumpfromoptimera; CSV type by filename -> IPriceImporter.",
+          "confidence": "confirmed",
+          "revision": "sha256:bf43c0f8eb2d9eeffe66a8a563ada87ca23c75ea35b64736b5713093dca4f0ba"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.blob.price-db",
+      "label": "Price SQL storage",
+      "kind": "store",
+      "responsibility": "Write-side price database (prices, campaigns, calculation reference data). BLOB-OPTIMERA writes imported Optimera CSV data here.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Storage.Write/PriceStorageDbContext.cs",
+          "note": "Write-side price SQL EF DbContext; no values copied.",
+          "confidence": "confirmed",
+          "revision": "sha256:df11a327132a271f1c4dec8c2ba44cc97c231b5c3fcdc44e026c71c84a3b1b81"
+        }
+      ],
+      "uncertainties": [],
+      "owner": "price"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.func.blob-in",
+      "from": "comp:price.func.optimera-files",
+      "to": "comp:price.func.file-import",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "CSV files",
+      "description": "Blob trigger per file.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs",
+          "note": "Lines 10\u201340: blob trigger on pricedumpfromoptimera; CSV type by filename -> IPriceImporter.",
+          "confidence": "confirmed",
+          "revision": "sha256:bf43c0f8eb2d9eeffe66a8a563ada87ca23c75ea35b64736b5713093dca4f0ba"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.func.blob-db",
+      "from": "comp:price.func.file-import",
+      "to": "comp:price.blob.price-db",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Imported Optimera data",
+      "description": "Import writes.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Functions/Functions/OptimeraSnapshotFileBlobTrigger.cs",
+          "note": "Lines 10\u201340: blob trigger on pricedumpfromoptimera; CSV type by filename -> IPriceImporter.",
+          "confidence": "confirmed",
+          "revision": "sha256:bf43c0f8eb2d9eeffe66a8a563ada87ca23c75ea35b64736b5713093dca4f0ba"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

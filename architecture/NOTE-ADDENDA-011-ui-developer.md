@@ -61,3 +61,9 @@ Artifacts: ADDENDA-011-architecture-layers.md, architecture-layer.schema.json, l
 - Real multi-depth examples for breadcrumbs: Flow → Functions → "Apply ingress snapshots" (`layer:customerproject.func-app.domain-update`); Flow → price Api → "Price reading" (`layer:price.api.get-prices`).
 - Auto-layout only; no `apos:*` persistence yet. The same `flowEntityId` may appear on several nodes/layers (e.g. q:customerproject) — they are references, not separate runtime entities.
 - New fixture rule V-008: reject a layer where a boundary node both receives from and sends to the same component.
+
+## ADDENDA-011.1 delta (2026-11-06) — supersedes container Explore above
+- “Explore architecture” lives on **handler nodes inside blue containers** (click/keyboard action on the handler item); **remove** the container-header Explore. Containers never get opensLayerId.
+- Flow DTO: `opensLayerId?` only on handler DTOs (sidecar from root.flowRef.handlerId). Index roots carry `flowRef {containerId, handlerId}`; on return/“View in Flow”, focus the originating **handler**.
+- Saved layouts: `dsp-arch-pos:v1:{project}:{env}:{layerId}`. Ignore (don't delete/remap) keys for retired ids listed in ADDENDA-011.1; keep others.
+- Handlers without a root show no affordance. PR3 layouts release is out of scope of this delta.

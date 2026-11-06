@@ -4,17 +4,25 @@ from copy import deepcopy
 import hashlib
 import json
 import re
+import sys
 from jsonschema import Draft202012Validator, FormatChecker
+LEGACY = '--allow-legacy-container-roots' in sys.argv  # ADDENDA-011.1: default OFF (CI intent)
 
 BASE = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((BASE / 'architecture-layer.schema.json').read_text())
 Draft202012Validator.check_schema(SCHEMA)
-VALIDATOR = Draft202012Validator(SCHEMA, format_checker=FormatChecker())
+STRICT_VALIDATOR = Draft202012Validator(SCHEMA, format_checker=FormatChecker())
+_legacy = deepcopy(SCHEMA)
+_legacy['$defs']['layer']['properties']['flowRef']['required'] = ['containerId']
+_legacy['$defs']['layer']['allOf'][0]['then'] = {'required': ['flowRef']}
+LEGACY_VALIDATOR = Draft202012Validator(_legacy, format_checker=FormatChecker())
+VALIDATOR = STRICT_VALIDATOR
 REG = json.loads((BASE / 'registrations/customerproject.dev.json').read_text())
 CAT = json.loads((BASE / 'layers/customerproject/index.json').read_text())
 LAYERS = [json.loads((BASE / 'layers/customerproject' / e['path']).read_text()) for e in CAT['layers']]
 
-def check(cat, layers, reg=REG):
+def check(cat, layers, reg=REG, legacy=False):
+    VALIDATOR = LEGACY_VALIDATOR if legacy else STRICT_VALIDATOR
     VALIDATOR.validate(cat)
     by = {}
     seen_nodes, seen_edges, paths = set(), set(), set()
@@ -65,9 +73,11 @@ def check(cat, layers, reg=REG):
         if layer['parentLayerId'] is None:
             ref = layer['flowRef']; c = ref['containerId']; h = ref.get('handlerId')
             require(c in containers, 'V-006 container')
-            require(not h or h in handlers and handlers[h]['containerId'] == c, 'V-006 handler')
-            require((c, h) not in roots, 'V-006 duplicate root')
-            roots.add((c, h))
+            require(legacy or h, 'V-011 root lacks handlerId (container-only roots are not Explore targets)')
+            require(not h or h in handlers and handlers[h]['containerId'] == c, 'V-011 handler dangling or wrong container')
+            key = h or ('container', c)
+            require(key not in roots, 'V-011 two roots claim same handler/source')
+            roots.add(key)
             require(scopes[layer['scope']] <= scopes[(handlers[h] if h else containers[c]).get('scope', containers[c].get('scope', 'both'))], 'V-002 root scope')
         for node in layer['nodes']:
             if 'opensLayerId' not in node: continue
@@ -79,11 +89,24 @@ def check(cat, layers, reg=REG):
         require(opens.get(layer['id'], 0) == (0 if layer['parentLayerId'] is None else 1), 'V-005 orphan/duplicate opener')
     return True
 
-check(CAT, LAYERS)
+LEGACY_ROOTS = []
+FAILS = []  # strict mode reports every project, then exits non-zero
+def real(cat, ls, reg):
+    missing = [l['id'] for l in ls if l['parentLayerId'] is None and 'handlerId' not in l.get('flowRef', {})]
+    if missing and not LEGACY:
+        return FAILS.append('FAIL (CONTRACT-PENDING) V-011 roots lack handlerId in ' + cat['project'] + ': ' + ', '.join(missing) + ' -- see drafts/PENDING-per-item-roots.md')
+    try:
+        return check(cat, ls, reg)
+    except Exception as exc:
+        if not LEGACY: return FAILS.append('FAIL (CONTRACT-PENDING) ' + cat['project'] + ': ' + getattr(exc, 'message', str(exc))[:200] + ' -- see drafts/PENDING-per-item-roots.md')
+        LEGACY_ROOTS.extend(l['id'] for l in ls if l['parentLayerId'] is None and 'handlerId' not in l['flowRef'])
+        return check(cat, ls, reg, legacy=True)
+print('STRICT customerproject:', 'PASS' if real(CAT, LAYERS, REG) else 'FAIL') if not LEGACY else real(CAT, LAYERS, REG)
 PREG = json.loads((BASE / 'registrations/price.dev.json').read_text())
 PCAT = json.loads((BASE / 'layers/price/index.json').read_text())
 PLAYERS = [json.loads((BASE / 'layers/price' / e['path']).read_text()) for e in PCAT['layers']]
-check(PCAT, PLAYERS, PREG)
+PREG = json.loads((BASE / 'registrations/price.dev.json').read_text())
+print('STRICT price:', 'PASS' if real(PCAT, PLAYERS, PREG) else 'FAIL') if not LEGACY else real(PCAT, PLAYERS, PREG)
 def forest_depth(ls):
     by = {l['id']: l for l in ls}; best = 0
     for l in ls:
@@ -93,10 +116,12 @@ def forest_depth(ls):
     return best
 assert forest_depth(LAYERS) >= 2 and forest_depth(PLAYERS) >= 2, 'real multi-depth required'
 # A valid three-layer synthetic forest exercises arbitrary-depth navigation (built from the ingress worked example only).
-cat, layers = deepcopy(CAT), [deepcopy(LAYERS[0])]
-cat['layers'] = cat['layers'][:1]
+_B = next(i for i, l in enumerate(LAYERS) if l['id'] == 'layer:customerproject.fn.ingress')  # ADDENDA-011.1 base
+cat, layers = deepcopy(CAT), [deepcopy(LAYERS[_B])]
+layers[0]['flowRef'] = {'containerId': 'container:customerproject.ingress-app', 'handlerId': 'customerproject.fn.ingress'}
+cat['layers'] = [cat['layers'][_B]]
 for depth in (2, 3):
-    child = deepcopy(LAYERS[0]); old_ids = {n['id']: n['id'] + '.test' + str(depth) for n in child['nodes']}
+    child = deepcopy(LAYERS[_B]); old_ids = {n['id']: n['id'] + '.test' + str(depth) for n in child['nodes']}
     child['id'] += '.test' + str(depth)
     child['parentLayerId'] = layers[-1]['id']; child.pop('flowRef')
     for n in child['nodes']: n['id'] = old_ids[n['id']]
@@ -118,12 +143,22 @@ bad('dangling parent', lambda c,l: l[1].update(parentLayerId='layer:customerproj
 bad('parent cycle', lambda c,l: l[1].update(parentLayerId=l[2]['id']))
 bad('dangling opens', lambda c,l: l[0]['nodes'][1].update(opensLayerId='layer:customerproject.missing'))
 bad('orphan child', lambda c,l: l[0]['nodes'][1].pop('opensLayerId'))
-bad('duplicate opener', lambda c,l: l[0]['nodes'][4].update(opensLayerId=l[1]['id']))
+bad('duplicate opener', lambda c,l: l[0]['nodes'][3].update(opensLayerId=l[1]['id']))
 bad('non-child link', lambda c,l: l[0]['nodes'][1].update(opensLayerId=l[2]['id']))
 bad('outside opener', lambda c,l: l[0]['nodes'][1].update(boundary='outside'))
 bad('missing endpoint', lambda c,l: l[0]['edges'][0].update(to='comp:customerproject.missing'))
 bad('duplicate node', lambda c,l: l[0]['nodes'].append(deepcopy(l[0]['nodes'][0])))
 bad('cross-project layer', lambda c,l: l[0].update(project='price'))
+bad('root without handlerId', lambda c,l: l[0]['flowRef'].pop('handlerId'))
+bad('handler wrong container', lambda c,l: l[0]['flowRef'].update(handlerId='customerproject.fn.domain'))
+bad('dangling handler', lambda c,l: l[0]['flowRef'].update(handlerId='customerproject.fn.missing'))
+def _dup(c,l):
+    x = deepcopy(l[0]); x['id'] = 'layer:customerproject.dup'; x['nodes'] = [dict(n, id=n['id']+'.dup') for n in x['nodes']]
+    for n in x['nodes']: n.pop('opensLayerId', None)
+    m = {o['id']: o['id']+'.dup' for o in l[0]['nodes']}
+    x['edges'] = [dict(e, id=e['id']+'.dup', **{'from': m[e['from']], 'to': m[e['to']]}) for e in x['edges']]
+    l.append(x); c['layers'].append({'id': x['id'], 'path': 'dup.json'})
+bad('two roots same handler', _dup)
 bad('flow container missing', lambda c,l: l[0]['flowRef'].update(containerId='container:customerproject.missing'))
 bad('flow entity missing', lambda c,l: l[0]['nodes'][0].update(flowEntityId='q:missing'))
 bad('path traversal', lambda c,l: c['layers'][0].update(path='../secret.json'))
@@ -149,8 +184,12 @@ for item in [x for L_ in LAYERS + PLAYERS for x in [L_, *L_['nodes'], *L_['edges
         elif source['kind'] == 'confluence':
             assert source['ref'].rsplit('/',1)[1] in {'22779513','22779013','22774292','22777574','22773861','22774388','22774149','22776628','22774078'}
         count += 1
+print('MODE', 'LEGACY (CONTRACT-PENDING roots: ' + ', '.join(LEGACY_ROOTS) + ')' if LEGACY else 'STRICT')
 print('PASS schema (layer/catalog), unchanged customerproject+price registrations')
 print('PASS real forests: customerproject', len(LAYERS), 'layers depth', forest_depth(LAYERS), '| price', len(PLAYERS), 'layers depth', forest_depth(PLAYERS), '| synthetic depth 3')
 print('PASS V-008 no bidirectional boundary node in any layer')
 print('PASS', len(cases), 'negative fixtures:', ', '.join(cases))
+for f_ in FAILS: print(f_)
 print('PASS', count, 'citation occurrences: local file/hash checks + 9 actually opened Confluence page IDs (3 customerproject + 6 price)')
+if FAILS: raise SystemExit('STRICT RESULT: FAIL (' + str(len(FAILS)) + ' project(s) CONTRACT-PENDING)')
+print('STRICT RESULT: PASS (all projects)' if not LEGACY else 'LEGACY RESULT: PASS')

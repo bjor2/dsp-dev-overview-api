@@ -298,7 +298,8 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "containerId"
+            "containerId",
+            "handlerId"
           ],
           "properties": {
             "containerId": {
@@ -309,7 +310,8 @@
               "type": "string",
               "minLength": 1
             }
-          }
+          },
+          "description": "ADDENDA-011.1: Explore target root binds to exactly one Flow HANDLER item; handlerId required for roots. Containers are never Explore targets."
         },
         "scope": {
           "enum": [
@@ -363,7 +365,15 @@
           "then": {
             "required": [
               "flowRef"
-            ]
+            ],
+            "properties": {
+              "flowRef": {
+                "required": [
+                  "containerId",
+                  "handlerId"
+                ]
+              }
+            }
           },
           "else": {
             "not": {
