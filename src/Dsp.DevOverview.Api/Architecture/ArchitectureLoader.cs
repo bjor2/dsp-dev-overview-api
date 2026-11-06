@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dsp.DevOverview.Api.Registration;
@@ -64,7 +66,8 @@ public static class ArchitectureLoader
             return ArchitectureState.Invalid(["V-001: architecture schema unavailable"]);
         }
 
-        var (catalogNode, issues) = Read(layersRoot, dir, IndexFile, validator.ValidateCatalog);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var (catalogNode, issues) = Read(layersRoot, dir, IndexFile, validator.ValidateCatalog, hash);
         if (catalogNode is null) return ArchitectureState.Invalid(issues);
         var catalog = catalogNode.Deserialize<ArchitectureCatalogDoc>(Json)!;
         // The catalog selects one registration; another env of the same project simply has no architecture (no cross-env fallback).
@@ -73,7 +76,7 @@ public static class ArchitectureLoader
         var documents = new List<(ArchitectureLayerDoc Doc, JsonObject Node)>();
         foreach (var entry in catalog.Layers)
         {
-            var (node, layerIssues) = Read(layersRoot, dir, entry.Path, validator.ValidateLayer);
+            var (node, layerIssues) = Read(layersRoot, dir, entry.Path, validator.ValidateLayer, hash);
             issues = [.. issues, .. layerIssues];
             if (node is not null) documents.Add((node.Deserialize<ArchitectureLayerDoc>(Json)!, node));
         }
@@ -82,20 +85,23 @@ public static class ArchitectureLoader
         issues = ArchitectureValidator.Check(catalog, documents.Select(d => d.Doc).ToList(), registration);
         return issues.Count > 0
             ? ArchitectureState.Invalid(issues)
-            : new ArchitectureState(ArchitectureStatus.Valid, Build(catalog, documents), []);
+            : new ArchitectureState(ArchitectureStatus.Valid, Build(catalog, documents, "sha256:" + Convert.ToHexStringLower(hash.GetHashAndReset())), []);
     }
 
     // A dangling symlink is present (and then rejected), not absent.
     private static bool Present(string path) => File.Exists(path) || new FileInfo(path).LinkTarget is not null;
 
+    // Every file read feeds UTF8(basename) + "\0" + bytes into the catalog hash, in read order (index.json, then catalog order).
     private static (JsonObject? Node, IReadOnlyList<string> Issues) Read(string layersRoot, string dir, string basename,
-        Func<JsonElement, IReadOnlyList<string>> validate)
+        Func<JsonElement, IReadOnlyList<string>> validate, IncrementalHash hash)
     {
         var (path, issue) = ArchitecturePaths.Resolve(layersRoot, dir, basename);
         if (issue is not null) return (null, [issue]);
         try
         {
             var bytes = File.ReadAllBytes(path!);
+            hash.AppendData(Encoding.UTF8.GetBytes(basename + "\0"));
+            hash.AppendData(bytes);
             using var doc = JsonDocument.Parse(bytes);
             var errors = validate(doc.RootElement);
             if (errors.Count > 0) return (null, errors.Select(e => $"V-001: {basename} {e}").ToList());
@@ -105,7 +111,8 @@ public static class ArchitectureLoader
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return (null, [$"V-003: {basename} could not be read"]); }
     }
 
-    private static ArchitectureCatalog Build(ArchitectureCatalogDoc catalog, IReadOnlyList<(ArchitectureLayerDoc Doc, JsonObject Node)> documents)
+    private static ArchitectureCatalog Build(ArchitectureCatalogDoc catalog, IReadOnlyList<(ArchitectureLayerDoc Doc, JsonObject Node)> documents,
+        string catalogHash)
     {
         var docs = documents.ToDictionary(d => d.Doc.Id, d => d.Doc, StringComparer.Ordinal);
 
@@ -135,6 +142,6 @@ public static class ArchitectureLoader
             .Select(d => new ArchitectureRoot(d.Id, d.Title, d.FlowRef!))
             .OrderBy(r => r.LayerId, StringComparer.Ordinal)
             .ToList();
-        return new ArchitectureCatalog(catalog.RegistrationId, roots, layers);
+        return new ArchitectureCatalog(catalog.RegistrationId, roots, layers, catalogHash);
     }
 }

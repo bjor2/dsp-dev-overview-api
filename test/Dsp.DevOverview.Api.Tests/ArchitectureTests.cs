@@ -228,6 +228,79 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Repeated_flow_entity_refs_on_distinct_nodes_stay_valid()
+    {
+        // flowEntityId only has to name a registration entity (V-006); several nodes may point at the same queue/topic.
+        var refs = LoadReal().Catalog!.Layers.Values
+            .SelectMany(l => l.Document.GetProperty("nodes").EnumerateArray())
+            .Where(n => n.TryGetProperty("flowEntityId", out _))
+            .GroupBy(n => n.GetProperty("flowEntityId").GetString());
+        Assert.Contains(refs, g => g.Count() > 1);
+
+        using var tree = LayerTree.Real();
+        var layer = tree.Layers.FindIndex(l => l["id"]!.GetValue<string>() == LayerTree.RootLayer);
+        var nodes = tree.Layer(layer)["nodes"]!.AsArray();
+        var entity = nodes.Select(n => n!["flowEntityId"]?.GetValue<string>()).First(e => e is not null);
+        foreach (var n in nodes) n!["flowEntityId"] = entity; // every node of one layer on the same entity
+        var state = tree.WriteAndLoad();
+        Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
+    }
+
+    // ---- catalogHash (DESIGN-flow-drilldown §8.5) ----
+
+    /// <summary>Byte-for-byte copy of a checked-in catalog (LayerTree.Write re-serializes, which changes the bytes).</summary>
+    private static string CopyCatalog(string project, string layersRoot)
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(layersRoot, project)).FullName;
+        foreach (var f in Directory.GetFiles(Path.Combine(RepoPaths.ArchitectureLayers, project), "*.json"))
+            File.Copy(f, Path.Combine(dir, Path.GetFileName(f)));
+        return dir;
+    }
+
+    private static string ExpectedHash(string dir)
+    {
+        var catalog = JsonNode.Parse(File.ReadAllBytes(Path.Combine(dir, "index.json")))!;
+        var files = new[] { "index.json" }.Concat(catalog["layers"]!.AsArray().Select(e => e!["path"]!.GetValue<string>()));
+        var input = files.SelectMany(f => System.Text.Encoding.UTF8.GetBytes(f + "\0").Concat(File.ReadAllBytes(Path.Combine(dir, f)))).ToArray();
+        return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(input));
+    }
+
+    [Fact]
+    public void Catalog_hash_covers_basenames_and_bytes_in_catalog_order()
+    {
+        foreach (var (project, state) in new[] { ("customerproject", LoadReal()), ("price", LoadPrice()) })
+        {
+            Assert.Matches("^sha256:[0-9a-f]{64}$", state.Catalog!.CatalogHash);
+            Assert.Equal(ExpectedHash(Path.Combine(RepoPaths.ArchitectureLayers, project)), state.Catalog.CatalogHash);
+        }
+        Assert.NotEqual(LoadReal().Catalog!.CatalogHash, LoadPrice().Catalog!.CatalogHash);
+    }
+
+    [Fact]
+    public void Catalog_hash_is_stable_across_loads_and_locations_and_tracks_layer_bytes()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "dsp-arch-hash-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var dir = CopyCatalog("customerproject", root);
+            string Hash() => ArchitectureLoader.Load(root, LayerTree.Registration, () => LayerTree.Schema).Catalog!.CatalogHash;
+            var first = Hash();
+            Assert.Equal(first, Hash());
+            Assert.Equal(LoadReal().Catalog!.CatalogHash, first); // no machine path in the input
+
+            var layer = Path.Combine(dir, "ingress-app.json");
+            File.AppendAllText(layer, " "); // one byte, still the same valid document
+            var changed = Hash();
+            Assert.NotEqual(first, changed);
+            Assert.Equal(ExpectedHash(dir), changed);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Missing_layers_root_or_project_dir_is_absent()
     {
         using var tree = LayerTree.Real(); // nothing written

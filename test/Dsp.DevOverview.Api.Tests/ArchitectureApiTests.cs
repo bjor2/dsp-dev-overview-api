@@ -96,6 +96,8 @@ public sealed class ArchitectureApiTests : IDisposable
         Assert.Equal(LayerTree.IngressContainer, root.GetProperty("flowRef").GetProperty("containerId").GetString());
         Assert.False(root.GetProperty("flowRef").TryGetProperty("handlerId", out _));
         Assert.Equal(0, index.GetProperty("warnings").GetArrayLength());
+        Assert.Equal(["catalogHash", "projectId", "roots", "schemaVersion", "warnings"], index.EnumerateObject().Select(p => p.Name).Order());
+        Assert.Matches("^sha256:[0-9a-f]{64}$", index.GetProperty("catalogHash").GetString());
         AssertNoMachinePaths(raw);
 
         (status, var layer, raw) = await Get(http, Layer(LayerTree.RootLayer));
@@ -158,6 +160,9 @@ public sealed class ArchitectureApiTests : IDisposable
         Assert.Equal("price.dev", index.GetProperty("projectId").GetString());
         Assert.Equal(["layer:price.api", "layer:price.api-batch", "layer:price.func-app", "layer:price.ingress-app"], Ids(index.GetProperty("roots")));
         Assert.Equal(0, index.GetProperty("warnings").GetArrayLength());
+        Assert.Matches("^sha256:[0-9a-f]{64}$", index.GetProperty("catalogHash").GetString());
+        var (_, customerproject, _) = await Get(http, $"{P}/architecture");
+        Assert.NotEqual(customerproject.GetProperty("catalogHash").GetString(), index.GetProperty("catalogHash").GetString());
         AssertNoMachinePaths(raw);
 
         (status, var nested, raw) = await Get(http, Layer("layer:price.api.get-prices", Price));
@@ -196,6 +201,7 @@ public sealed class ArchitectureApiTests : IDisposable
         var (status, index, _) = await Get(http, "/api/projects/price.dev/architecture");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal((0, 0), (index.GetProperty("roots").GetArrayLength(), index.GetProperty("warnings").GetArrayLength()));
+        Assert.False(index.TryGetProperty("catalogHash", out _));
 
         (status, var err, _) = await Get(http, $"/api/projects/price.dev/architecture/layer?layerId={Uri.EscapeDataString("layer:price.api")}");
         Assert.Equal(HttpStatusCode.NotFound, status);
@@ -244,15 +250,16 @@ public sealed class ArchitectureApiTests : IDisposable
         var tree = Tree(LayerTree.Real()); // nothing written: the layers root does not even exist
         var http = Client(tree.LayersRoot);
 
-        var (status, index, _) = await Get(http, $"{P}/architecture");
+        var (status, index, raw) = await Get(http, $"{P}/architecture");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal((0, 0), (index.GetProperty("roots").GetArrayLength(), index.GetProperty("warnings").GetArrayLength()));
+        Assert.DoesNotContain("catalogHash", raw);
         (status, var err, _) = await Get(http, Layer(LayerTree.RootLayer));
         Assert.Equal(HttpStatusCode.NotFound, status);
         Assert.Equal("ARCHITECTURE_LAYER_NOT_FOUND", err.GetProperty("error").GetProperty("code").GetString());
 
         await AssertBaseFlow(http);
-        var (_, flow, raw) = await Get(http, $"{P}/flow");
+        (_, var flow, raw) = await Get(http, $"{P}/flow");
         Assert.DoesNotContain("opensLayerId", raw);
         Assert.DoesNotContain(flow.GetProperty("warnings").EnumerateArray(), w => w.GetString()!.StartsWith("ARCHITECTURE"));
     }
@@ -272,6 +279,7 @@ public sealed class ArchitectureApiTests : IDisposable
         var warning = Assert.Single(index.GetProperty("warnings").EnumerateArray()).GetString()!;
         Assert.StartsWith("ARCHITECTURE_INVALID: ", warning);
         Assert.Contains("V-004", warning);
+        Assert.DoesNotContain("catalogHash", raw);
         AssertNoMachinePaths(raw, tree.LayersRoot);
 
         // Atomic: even the untouched root layer is not served from a rejected catalog.
@@ -307,6 +315,7 @@ public sealed class ArchitectureApiTests : IDisposable
         var (status, index, raw) = await Get(http, $"{P}/architecture");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.StartsWith("ARCHITECTURE_INVALID", Assert.Single(index.GetProperty("warnings").EnumerateArray()).GetString());
+        Assert.DoesNotContain("catalogHash", raw);
         AssertNoMachinePaths(raw, tree.LayersRoot);
         await AssertBaseFlow(http);
     }

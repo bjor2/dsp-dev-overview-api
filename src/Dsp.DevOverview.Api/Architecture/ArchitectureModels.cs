@@ -37,8 +37,12 @@ public sealed record ArchitectureLayer(
 
 public sealed record ArchitectureRoot(string LayerId, string Title, ArchitectureFlowRef FlowRef);
 
-/// <summary>Immutable, fully validated catalog snapshot for one registration.</summary>
-public sealed record ArchitectureCatalog(string RegistrationId, IReadOnlyList<ArchitectureRoot> Roots, IReadOnlyDictionary<string, ArchitectureLayer> Layers)
+/// <summary>
+/// Immutable, fully validated catalog snapshot for one registration. <see cref="CatalogHash"/> is <c>sha256:</c> + lowercase hex over
+/// <c>UTF8(basename) + "\0" + bytes</c> of index.json then each catalog entry, in catalog order (no machine paths).
+/// </summary>
+public sealed record ArchitectureCatalog(
+    string RegistrationId, IReadOnlyList<ArchitectureRoot> Roots, IReadOnlyDictionary<string, ArchitectureLayer> Layers, string CatalogHash)
 {
     /// <summary>Flow container id → root layer id (container roots only, i.e. no handlerId).</summary>
     public IReadOnlyDictionary<string, string> ContainerLinks { get; } =
@@ -71,7 +75,9 @@ public sealed record ArchitectureState(ArchitectureStatus Status, ArchitectureCa
 
 // Wire DTOs (NOTE-ADDENDA-011-api-contract.md).
 
-public sealed record ArchitectureIndexResponse(string ProjectId, int SchemaVersion, IReadOnlyList<ArchitectureRoot> Roots, IReadOnlyList<string> Warnings);
+public sealed record ArchitectureIndexResponse(
+    string ProjectId, int SchemaVersion, IReadOnlyList<ArchitectureRoot> Roots, IReadOnlyList<string> Warnings,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CatalogHash = null);
 
 public sealed record ArchitectureLayerResponse(
     string ProjectId, int SchemaVersion, JsonElement Layer, ArchitectureFlowRef RootFlowRef,

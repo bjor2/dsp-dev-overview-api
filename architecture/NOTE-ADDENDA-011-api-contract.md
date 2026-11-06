@@ -24,9 +24,11 @@ All routes are read-only, anonymous like the rest of `/api`, and live under the 
     { "layerId": "layer:customerproject.ingress-app", "title": "Ingress — import and snapshot responsibilities",
       "flowRef": { "containerId": "container:customerproject.ingress-app" } }
   ],
-  "warnings": []
+  "warnings": [],
+  "catalogHash": "sha256:<64 lowercase hex>"
 }
 ```
+- `catalogHash` (optional, DESIGN-flow-drilldown §8.5) identifies the exact catalog bytes the API validated. It is `sha256:` plus lowercase hex SHA-256 over `UTF8(basename) + "\0" + fileBytes` for `index.json`, then each catalog entry in catalog order. No machine paths go into the hash, so the same files give the same value on the box and on Render. It is present only for a valid catalog and omitted (not `null`) when the catalog is absent or invalid. It changes when any byte of a served file changes, including whitespace. The layer route does not carry it.
 - `roots` lists root layers only (sorted ordinally by `layerId`, so `layer:price.api` comes before `layer:price.api-batch`). Descendants such as `func-app.domain-update` are never listed here. They are reached through `children` on the layer route.
 - `flowRef.handlerId` appears only for a handler-bound root.
 - No catalog for the project (no `architecture/layers/{project}/` folder): `200`, `roots: []`, `warnings: []`. Both registered projects have a catalog now, so this only happens for a new project or a layers root without that folder.

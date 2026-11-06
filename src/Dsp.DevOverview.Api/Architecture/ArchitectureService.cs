@@ -27,7 +27,8 @@ public sealed class ArchitectureService(OverviewService overview, string layersR
     {
         var p = overview.Project(id);
         var state = For(p);
-        return new ArchitectureIndexResponse(p.Id, ArchitectureLoader.SchemaVersion, state.Catalog?.Roots ?? [], state.Warnings);
+        return new ArchitectureIndexResponse(p.Id, ArchitectureLoader.SchemaVersion, state.Catalog?.Roots ?? [], state.Warnings,
+            state.Catalog?.CatalogHash);
     }
 
     // GET /api/projects/{id}/architecture/layer?layerId=
