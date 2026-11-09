@@ -130,7 +130,8 @@
           "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:customerproject.fn.snapshot.address"
     },
     {
       "id": "comp:customerproject.ingress.price-snapshots",
@@ -161,7 +162,8 @@
           "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:customerproject.fn.snapshot.project-price"
     },
     {
       "id": "comp:customerproject.snapshot.storage",

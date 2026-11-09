@@ -1,0 +1,293 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:customerproject.fn.snapshot.address",
+  "project": "customerproject",
+  "title": "SNAPSHOT \u2014 customer-address snapshot composition",
+  "summary": "Drill-down of \u201cCustomer-address snapshot composition\u201d: which address keys a change affects and how the snapshot row is shaped. Conceptual responsibilities, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:customerproject.fn.snapshot",
+  "scope": "both",
+  "reviewedAt": "2026-11-06T17:45:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+      "note": "Lines 45-89: snapshot trigger, address and project-price command families.",
+      "confidence": "confirmed",
+      "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+      "note": "Lines 26-75: three key sources (CustomerAddresses by id; Customers -> all addresses; CustomerEmails EmailKeyValue as CustomerId).",
+      "confidence": "confirmed",
+      "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+      "note": "Lines 77-137: join address+customer+email; AddressType 1/3, non-empty number, malformed CustomerId filtered; IsDeleted if any part deleted; IsDefaultDeliveryAddress; SourceTimestampUtc = query time.",
+      "confidence": "confirmed",
+      "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerAddressChangedHandler.cs",
+      "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+      "confidence": "confirmed",
+      "revision": "sha256:549fc6a251f67d065ab4590483109015bcaef103cbb0f6a91b977f521c2835a8"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerChangedHandler.cs",
+      "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+      "confidence": "confirmed",
+      "revision": "sha256:33c4b68313c7fef3846437002bb4bce09adb8754acee2d49ae19111605f62b74"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerEmailChangedHandler.cs",
+      "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+      "confidence": "confirmed",
+      "revision": "sha256:aa20b6b60145351c3c88c23451cc9a85ffca01da9bd00d37a1b9061ce5f64e7e"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774292",
+      "revision": "version:13",
+      "confidence": "confirmed",
+      "note": "Opened full markdown. 2024 conversion design: PICo/Table Event streams for CustomerAddress and ProjectWithPrice; design intent, not deployment proof."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22779013",
+      "revision": "version:6",
+      "confidence": "confirmed",
+      "note": "Opened full markdown. Historical upstream ADF/M3 address and HasProjectPrice analysis, NOT an in-process component or evidence ADF executes here."
+    }
+  ],
+  "uncertainties": [
+    "Confluence 22774292 v13 event-stream conversion is design intent; rollout not inferred.",
+    "Confluence 22779013 v6 ADF/M3 address analysis is historical; ADF is not drawn.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:customerproject.sa.input",
+      "label": "SNAPSHOT queue (address subjects)",
+      "kind": "external",
+      "responsibility": "Customer, CustomerAddress, CustomerEmail changed requests.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45-89: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:customerproject-snapshot"
+    },
+    {
+      "id": "comp:customerproject.sa.keys",
+      "label": "Change -> affected address keys",
+      "kind": "component",
+      "responsibility": "Maps each changed ingress row to the address keys it affects: one address, all addresses of a customer, or all addresses keyed by the email key.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 26-75: three key sources (CustomerAddresses by id; Customers -> all addresses; CustomerEmails EmailKeyValue as CustomerId).",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerAddressChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:549fc6a251f67d065ab4590483109015bcaef103cbb0f6a91b977f521c2835a8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:33c4b68313c7fef3846437002bb4bce09adb8754acee2d49ae19111605f62b74"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerEmailChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:aa20b6b60145351c3c88c23451cc9a85ffca01da9bd00d37a1b9061ce5f64e7e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.sa.compose",
+      "label": "Address snapshot composition",
+      "kind": "component",
+      "responsibility": "Denormalises address + customer name/phone + email into CustomerAddressSnapshot; keeps only delivery-type addresses (1,3) with numbers; derives IsDeleted (any part deleted) and IsDefaultDeliveryAddress; stamps query time.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 77-137: join address+customer+email; AddressType 1/3, non-empty number, malformed CustomerId filtered; IsDeleted if any part deleted; IsDefaultDeliveryAddress; SourceTimestampUtc = query time.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": [
+        "SourceTimestampUtc is the query time, not upstream change time; staleness handling relies on DOMAIN bookkeeping (Dahl.Core, not reviewed)."
+      ]
+    },
+    {
+      "id": "comp:customerproject.sa.store",
+      "label": "Ingress SQL (persisted models)",
+      "kind": "store",
+      "responsibility": "ingress.CustomerAddresses / Customers / CustomerEmails.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 77-137: join address+customer+email; AddressType 1/3, non-empty number, malformed CustomerId filtered; IsDeleted if any part deleted; IsDefaultDeliveryAddress; SourceTimestampUtc = query time.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:customerproject.sa.out",
+      "label": "DOMAIN queue",
+      "kind": "external",
+      "responsibility": "UpdateCustomerAddressFromSnapshot batch.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerAddressChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:549fc6a251f67d065ab4590483109015bcaef103cbb0f6a91b977f521c2835a8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:33c4b68313c7fef3846437002bb4bce09adb8754acee2d49ae19111605f62b74"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerEmailChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:aa20b6b60145351c3c88c23451cc9a85ffca01da9bd00d37a1b9061ce5f64e7e"
+        }
+      ],
+      "uncertainties": [],
+      "flowEntityId": "q:customerproject-domain"
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:customerproject.sa.in",
+      "from": "comp:customerproject.sa.input",
+      "to": "comp:customerproject.sa.keys",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "Address change subjects",
+      "description": "Request.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Functions/Functions/SnapshotQueueHandler.cs",
+          "note": "Lines 45-89: snapshot trigger, address and project-price command families.",
+          "confidence": "confirmed",
+          "revision": "sha256:b1811f9040391b0b25da5d203f1c38e74fcaea09c7a012ee4bbfe2724ad1cfba"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.sa.read",
+      "from": "comp:customerproject.sa.keys",
+      "to": "comp:customerproject.sa.store",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Key lookup",
+      "description": "Changed row -> keys.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 26-75: three key sources (CustomerAddresses by id; Customers -> all addresses; CustomerEmails EmailKeyValue as CustomerId).",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.sa.join",
+      "from": "comp:customerproject.sa.store",
+      "to": "comp:customerproject.sa.compose",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "Joined rows",
+      "description": "Address + customer + email.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Storage/IngressSnapshotStorage.cs",
+          "note": "Lines 77-137: join address+customer+email; AddressType 1/3, non-empty number, malformed CustomerId filtered; IsDeleted if any part deleted; IsDefaultDeliveryAddress; SourceTimestampUtc = query time.",
+          "confidence": "confirmed",
+          "revision": "sha256:f93a7b55e4750a987441657054aa0a04bc21a7210d19a192c17ca02a7a7578cc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:customerproject.sa.send",
+      "from": "comp:customerproject.sa.compose",
+      "to": "comp:customerproject.sa.out",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "UpdateCustomerAddressFromSnapshot",
+      "description": "Batch.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerAddressChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:549fc6a251f67d065ab4590483109015bcaef103cbb0f6a91b977f521c2835a8"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:33c4b68313c7fef3846437002bb4bce09adb8754acee2d49ae19111605f62b74"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-customerproject/src/Dahl.CustomerProject.Ingress.Application/CreateIngressSnapshot/CreateCustomerAddressSnapshotOnCustomerEmailChangedHandler.cs",
+          "note": "Lines 22-28: build snapshots and send UpdateCustomerAddressFromSnapshot batch.",
+          "confidence": "confirmed",
+          "revision": "sha256:aa20b6b60145351c3c88c23451cc9a85ffca01da9bd00d37a1b9061ce5f64e7e"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

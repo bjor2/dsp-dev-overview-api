@@ -28,6 +28,26 @@
     {
       "id": "layer:customerproject.api",
       "path": "api.json"
+    },
+    {
+      "id": "layer:customerproject.fn.commands.project-lifecycle",
+      "path": "fn.commands.project-lifecycle.json"
+    },
+    {
+      "id": "layer:customerproject.fn.commands.address-upsert",
+      "path": "fn.commands.address-upsert.json"
+    },
+    {
+      "id": "layer:customerproject.api.project-write",
+      "path": "api.project-write.json"
+    },
+    {
+      "id": "layer:customerproject.fn.snapshot.address",
+      "path": "fn.snapshot.address.json"
+    },
+    {
+      "id": "layer:customerproject.fn.snapshot.project-price",
+      "path": "fn.snapshot.project-price.json"
     }
   ]
 }

@@ -137,7 +137,8 @@
           "revision": "sha256:f9034246830add085d4326c833b2eb2d24bdb0abc0cbc69d056bb4cd5744bc45"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:customerproject.fn.commands.project-lifecycle"
     },
     {
       "id": "comp:customerproject.func.address-upsert",
@@ -168,7 +169,8 @@
           "revision": "sha256:edbd5e6e72746764f41517746fba551c8fc2ec5ece9fa855b94dbec422ff18f1"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:customerproject.fn.commands.address-upsert"
     },
     {
       "id": "comp:customerproject.func.order-association",

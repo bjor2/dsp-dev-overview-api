@@ -4,8 +4,8 @@
   "documentType": "architecture-layer",
   "id": "layer:price.api.get-prices",
   "project": "price",
-  "title": "Price reading — strategy, DSP calculation and M3 fallback",
-  "summary": "Second-level drill-down of Api → “Price reading”: how a tenant request resolves to DSP-calculated or M3-sourced prices.",
+  "title": "Price reading \u2014 strategy, DSP calculation and M3 fallback",
+  "summary": "Second-level drill-down of Api \u2192 \u201cPrice reading\u201d: how a tenant request resolves to DSP-calculated or M3-sourced prices.",
   "parentLayerId": "layer:price.api",
   "scope": "both",
   "reviewedAt": "2026-11-06T12:15:00+01:00",
@@ -13,21 +13,21 @@
     {
       "kind": "repo",
       "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-      "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+      "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
       "confidence": "confirmed",
       "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
     },
     {
       "kind": "repo",
       "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
-      "note": "Lines 10–165: DSP calculation via IPriceCalculator, with fallback to M3PriceRetriever.",
+      "note": "Lines 10\u2013165: DSP calculation via IPriceCalculator, with fallback to M3PriceRetriever.",
       "confidence": "confirmed",
       "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
     },
     {
       "kind": "repo",
       "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
-      "note": "Lines 16–28: calculator composed of customer, item master, order-type, price-list matrix/table, discount, direct-delivery and agreement resolvers.",
+      "note": "Lines 16\u201328: calculator composed of customer, item master, order-type, price-list matrix/table, discount, direct-delivery and agreement resolvers.",
       "confidence": "confirmed",
       "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
     },
@@ -43,7 +43,7 @@
       "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22777574",
       "revision": "version:6",
       "confidence": "confirmed",
-      "note": "Product/design intent: DSP Price subscribes to M3 key tables and provides price simulation outside M3 (avoids OIS320MI cost/limits); for ecommerce + customer price list tools. Campaign special case CMNO→CSYTAB. Not deployment proof."
+      "note": "Product/design intent: DSP Price subscribes to M3 key tables and provides price simulation outside M3 (avoids OIS320MI cost/limits); for ecommerce + customer price list tools. Campaign special case CMNO\u2192CSYTAB. Not deployment proof."
     },
     {
       "kind": "confluence",
@@ -75,7 +75,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-          "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+          "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
           "confidence": "confirmed",
           "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
         }
@@ -92,7 +92,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-          "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+          "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
           "confidence": "confirmed",
           "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
         }
@@ -111,7 +111,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/OptimeraDsp.cs",
-          "note": "Lines 16–105: DSP strategy uses DB readers + DspCalculationPriceRetriever.",
+          "note": "Lines 16\u2013105: DSP strategy uses DB readers + DspCalculationPriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:6900399d6fdeb8d7943e21dac80b069674eb8fe851128f29c377705c67632dcb"
         }
@@ -128,14 +128,14 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/OptimeraM3Api.cs",
-          "note": "Lines 16–105: M3 API strategy uses DB readers + M3PriceRetriever.",
+          "note": "Lines 16\u2013105: M3 API strategy uses DB readers + M3PriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:c2669a8595f25dd0a7fa269f5319751a74eb88394173b51837633afacb2db5d2"
         },
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/DahlOnPrem.cs",
-          "note": "Lines 15–47: Dahl on-prem strategy falls back to M3 prices for missing data.",
+          "note": "Lines 15\u201347: Dahl on-prem strategy falls back to M3 prices for missing data.",
           "confidence": "confirmed",
           "revision": "sha256:43d2d96740ece6343bcbfb06a8ae3898e7e5dbd92b57471b8b2bc35d12444f98"
         }
@@ -152,7 +152,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
-          "note": "Lines 10–165: DSP calculation via IPriceCalculator, with fallback to M3PriceRetriever.",
+          "note": "Lines 10\u2013165: DSP calculation via IPriceCalculator, with fallback to M3PriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
         }
@@ -169,7 +169,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
-          "note": "Lines 16–28: calculator composed of customer, item master, order-type, price-list matrix/table, discount, direct-delivery and agreement resolvers.",
+          "note": "Lines 16\u201328: calculator composed of customer, item master, order-type, price-list matrix/table, discount, direct-delivery and agreement resolvers.",
           "confidence": "confirmed",
           "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
         },
@@ -183,7 +183,8 @@
       ],
       "uncertainties": [
         "docs/PriceCalculator.md may describe precalculation phases not yet in code."
-      ]
+      ],
+      "opensLayerId": "layer:price.api.get-prices.calculator"
     },
     {
       "id": "comp:price.get-prices.m3-retriever",
@@ -195,7 +196,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/M3PriceRetriever.cs",
-          "note": "Lines 11–14: M3 prices via IErpPriceClient.",
+          "note": "Lines 11\u201314: M3 prices via IErpPriceClient.",
           "confidence": "confirmed",
           "revision": "sha256:798e822f946b359892277999a59ba9e2a74d5558f6f50c3ebda5bdfea7cf95eb"
         },
@@ -258,7 +259,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-          "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+          "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
           "confidence": "confirmed",
           "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
         }
@@ -277,7 +278,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-          "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+          "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
           "confidence": "confirmed",
           "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
         }
@@ -296,7 +297,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReader.cs",
-          "note": "Lines 15–79: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
+          "note": "Lines 15\u201379: strategy selection by tenant, DataSource and DSP-calculation feature flags/override.",
           "confidence": "confirmed",
           "revision": "sha256:50603675568c6df5fedcec0bdd1740314e2804d0cebdd22ce4a4ab80adc7388c"
         }
@@ -315,7 +316,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/OptimeraDsp.cs",
-          "note": "Lines 16–105: DSP strategy uses DB readers + DspCalculationPriceRetriever.",
+          "note": "Lines 16\u2013105: DSP strategy uses DB readers + DspCalculationPriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:6900399d6fdeb8d7943e21dac80b069674eb8fe851128f29c377705c67632dcb"
         }
@@ -334,7 +335,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/OptimeraDsp.cs",
-          "note": "Lines 16–105: DSP strategy uses DB readers + DspCalculationPriceRetriever.",
+          "note": "Lines 16\u2013105: DSP strategy uses DB readers + DspCalculationPriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:6900399d6fdeb8d7943e21dac80b069674eb8fe851128f29c377705c67632dcb"
         }
@@ -353,14 +354,14 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/OptimeraM3Api.cs",
-          "note": "Lines 16–105: M3 API strategy uses DB readers + M3PriceRetriever.",
+          "note": "Lines 16\u2013105: M3 API strategy uses DB readers + M3PriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:c2669a8595f25dd0a7fa269f5319751a74eb88394173b51837633afacb2db5d2"
         },
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/DahlOnPrem.cs",
-          "note": "Lines 15–47: Dahl on-prem strategy falls back to M3 prices for missing data.",
+          "note": "Lines 15\u201347: Dahl on-prem strategy falls back to M3 prices for missing data.",
           "confidence": "confirmed",
           "revision": "sha256:43d2d96740ece6343bcbfb06a8ae3898e7e5dbd92b57471b8b2bc35d12444f98"
         }
@@ -379,7 +380,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/OptimeraM3Api.cs",
-          "note": "Lines 16–105: M3 API strategy uses DB readers + M3PriceRetriever.",
+          "note": "Lines 16\u2013105: M3 API strategy uses DB readers + M3PriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:c2669a8595f25dd0a7fa269f5319751a74eb88394173b51837633afacb2db5d2"
         }
@@ -398,7 +399,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
-          "note": "Lines 10–165: DSP calculation via IPriceCalculator, with fallback to M3PriceRetriever.",
+          "note": "Lines 10\u2013165: DSP calculation via IPriceCalculator, with fallback to M3PriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
         }
@@ -417,7 +418,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
-          "note": "Lines 10–165: DSP calculation via IPriceCalculator, with fallback to M3PriceRetriever.",
+          "note": "Lines 10\u2013165: DSP calculation via IPriceCalculator, with fallback to M3PriceRetriever.",
           "confidence": "confirmed",
           "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
         }
@@ -436,7 +437,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
-          "note": "Lines 16–28: calculator composed of customer, item master, order-type, price-list matrix/table, discount, direct-delivery and agreement resolvers.",
+          "note": "Lines 16\u201328: calculator composed of customer, item master, order-type, price-list matrix/table, discount, direct-delivery and agreement resolvers.",
           "confidence": "confirmed",
           "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
         }
@@ -457,7 +458,7 @@
         {
           "kind": "repo",
           "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/M3PriceRetriever.cs",
-          "note": "Lines 11–14: M3 prices via IErpPriceClient.",
+          "note": "Lines 11\u201314: M3 prices via IErpPriceClient.",
           "confidence": "confirmed",
           "revision": "sha256:798e822f946b359892277999a59ba9e2a74d5558f6f50c3ebda5bdfea7cf95eb"
         },

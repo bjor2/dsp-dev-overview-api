@@ -43,10 +43,10 @@ internal sealed class LayerTree : IDisposable
         return new LayerTree(project, registration, layersRoot, catalog, layers);
     }
 
-    /// <summary>The full checked-in customerproject catalog (5 handler roots, one nested child).</summary>
+    /// <summary>The full checked-in customerproject catalog (5 handler roots, 6 depth-2 children).</summary>
     public static LayerTree Real(string? layersRoot = null) => FromRepo("customerproject", Registration, layersRoot);
 
-    /// <summary>The full checked-in price catalog (8 handler roots, one nested child), validated against price.dev.</summary>
+    /// <summary>The full checked-in price catalog (8 handler roots, deepen children including depth-3 calculator), validated against price.dev.</summary>
     public static LayerTree PriceReal(string? layersRoot = null) => FromRepo("price", PriceRegistration, layersRoot);
 
     /// <summary>
@@ -166,14 +166,14 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
     ];
 
     [Fact]
-    public void Real_customerproject_catalog_has_five_handler_roots_and_a_nested_domain_update_child()
+    public void Real_customerproject_catalog_has_five_handler_roots_and_six_depth_two_children()
     {
         var state = LoadReal();
         Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
         Assert.Empty(state.Issues);
         var c = state.Catalog!;
         Assert.Equal(CustomerprojectHandlerRoots.Values.Order(StringComparer.Ordinal), c.Roots.Select(r => r.LayerId)); // ordinal by layerId
-        Assert.Equal(6, c.Layers.Count);
+        Assert.Equal(11, c.Layers.Count);
 
         // Every root binds one handler in that handler's own container (ADDENDA-011.1); no container-only root exists.
         var handlers = LayerTree.Registration.Handlers.ToDictionary(h => h.Id);
@@ -206,15 +206,38 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         Assert.Equal(new ArchitectureFlowRef(FuncContainer, "customerproject.fn.domain"), nested.RootFlowRef);
         Assert.False(nested.Document.TryGetProperty("flowRef", out _)); // inherited, not authored
         Assert.Empty(nested.Children);
-        Assert.Empty(c.Layers[ApiLayer].Children);
         Assert.Equal(new ArchitectureFlowRef("container:customerproject.api", "customerproject.api.http"), c.Layers[ApiLayer].RootFlowRef);
+
+        // CP deepen: API, COMMANDS and SNAPSHOT each open depth-2 children from existing components (children ordinal by layerId).
+        AssertChildren(ApiLayer,
+            new ArchitectureChild("layer:customerproject.api.project-write", "API — project create/update decisions", "comp:customerproject.api.project-service"));
+        AssertChildren("layer:customerproject.fn.commands",
+            new ArchitectureChild("layer:customerproject.fn.commands.address-upsert", "COMMANDS — customer address upsert decisions", "comp:customerproject.func.address-upsert"),
+            new ArchitectureChild("layer:customerproject.fn.commands.project-lifecycle", "COMMANDS — project lifecycle decisions", "comp:customerproject.func.project-lifecycle"));
+        AssertChildren("layer:customerproject.fn.snapshot",
+            new ArchitectureChild("layer:customerproject.fn.snapshot.address", "SNAPSHOT — customer-address snapshot composition", "comp:customerproject.ingress.address-snapshots"),
+            new ArchitectureChild("layer:customerproject.fn.snapshot.project-price", "SNAPSHOT — project-price snapshot composition", "comp:customerproject.ingress.price-snapshots"));
+
+        void AssertChildren(string parentId, params ArchitectureChild[] expected)
+        {
+            var parent = c.Layers[parentId];
+            Assert.Equal(expected, parent.Children);
+            Assert.All(expected, e =>
+            {
+                var child = c.Layers[e.LayerId];
+                Assert.Equal([parentId, e.LayerId], child.Breadcrumbs.Select(b => b.LayerId));
+                Assert.Equal(parent.Breadcrumbs, child.Breadcrumbs.Take(1));
+                Assert.Equal(parent.RootFlowRef, child.RootFlowRef);
+                Assert.Empty(child.Children);
+            });
+        }
 
         Assert.All(c.Layers.Values.Select(l => l.Document), d =>
             Assert.All(d.GetProperty("edges").EnumerateArray(), e => Assert.Equal("conceptual", e.GetProperty("kind").GetString())));
     }
 
     [Fact]
-    public void Real_price_catalog_has_eight_handler_roots_and_a_nested_get_prices_child()
+    public void Real_price_catalog_has_eight_handler_roots_and_deepen_children_including_depth_three_calculator()
     {
         var state = LoadPrice();
         Assert.True(state.Status == ArchitectureStatus.Valid, string.Join("\n", state.Issues));
@@ -222,7 +245,7 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         var c = state.Catalog!;
         Assert.Equal("price.dev", c.RegistrationId);
         Assert.Equal(PriceHandlerRoots.Values.Order(StringComparer.Ordinal), c.Roots.Select(r => r.LayerId));
-        Assert.Equal(9, c.Layers.Count);
+        Assert.Equal(12, c.Layers.Count);
         var handlers = LayerTree.PriceRegistration.Handlers.ToDictionary(h => h.Id);
         Assert.All(c.Roots, r => Assert.Equal(handlers[r.FlowRef.HandlerId].ContainerId, r.FlowRef.ContainerId));
         Assert.Equal(PriceHandlerRoots, c.HandlerLinks);
@@ -235,6 +258,25 @@ public sealed class ArchitectureLoaderTests(ITestOutputHelper output)
         Assert.Equal(["layer:price.api", "layer:price.api.get-prices"], nested.Breadcrumbs.Select(b => b.LayerId));
         Assert.Equal(new ArchitectureFlowRef("container:price.api", "price.api.http"), nested.RootFlowRef);
         Assert.False(nested.Document.TryGetProperty("flowRef", out _));
+        Assert.Equal(new[] { new ArchitectureChild("layer:price.api.get-prices.calculator", "DSP price calculator — composition stages", "comp:price.get-prices.calculator") }, nested.Children);
+
+        // Depth-3 calculator inherits the API handler root through get-prices.
+        var calculator = c.Layers["layer:price.api.get-prices.calculator"];
+        Assert.Equal(["layer:price.api", "layer:price.api.get-prices", "layer:price.api.get-prices.calculator"], calculator.Breadcrumbs.Select(b => b.LayerId));
+        Assert.Equal(nested.Breadcrumbs, calculator.Breadcrumbs.Take(2));
+        Assert.Equal(nested.RootFlowRef, calculator.RootFlowRef);
+        Assert.False(calculator.Document.TryGetProperty("flowRef", out _));
+        Assert.Empty(calculator.Children);
+
+        // Price deepen depth-2 siblings under snapshot and commands.
+        Assert.Equal(new[] { new ArchitectureChild("layer:price.fn.snapshot.full-reload", "SNAPSHOT — Optimera full reload", "comp:price.ingress.full-reload") },
+            c.Layers["layer:price.fn.snapshot"].Children);
+        Assert.Equal(["layer:price.fn.snapshot", "layer:price.fn.snapshot.full-reload"],
+            c.Layers["layer:price.fn.snapshot.full-reload"].Breadcrumbs.Select(b => b.LayerId));
+        Assert.Equal(new[] { new ArchitectureChild("layer:price.fn.commands.work", "COMMANDS — import, campaign-change and price-history work", "comp:price.func.commands") },
+            c.Layers["layer:price.fn.commands"].Children);
+        Assert.Equal(["layer:price.fn.commands", "layer:price.fn.commands.work"],
+            c.Layers["layer:price.fn.commands.work"].Breadcrumbs.Select(b => b.LayerId));
 
         // Deliberately thin, high-uncertainty layer still loads and keeps its caveats visible.
         var batch = c.Layers["layer:price.api-batch"].Document;
