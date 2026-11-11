@@ -21,6 +21,19 @@ REG = json.loads((BASE / 'registrations/customerproject.dev.json').read_text())
 CAT = json.loads((BASE / 'layers/customerproject/index.json').read_text())
 LAYERS = [json.loads((BASE / 'layers/customerproject' / e['path']).read_text()) for e in CAT['layers']]
 
+# V-012 (guide-mapped price calculator layers, 2026-11-11): every node states its evidence status vs code.
+GUIDE_PREFIX = 'layer:price.api.get-prices.calculator.'
+GUIDE_STATUS = re.compile(r'^Guide vs code: (confirmed|design-only|conflicting|code-only)\. \S')
+def check_guide_status(layer, require):
+    if not layer['id'].startswith(GUIDE_PREFIX): return
+    for node in layer['nodes']:
+        m = GUIDE_STATUS.match(node['responsibility'])
+        require(m, 'V-012 missing/unknown evidence status ' + node['id'])
+        if m.group(1) != 'confirmed':
+            require(node['uncertainties'], 'V-012 non-confirmed status without uncertainty ' + node['id'])
+        if m.group(1) in ('design-only', 'conflicting'):
+            require(any(x['kind'] == 'confluence' for x in node['sources']), 'V-012 design claim without Confluence source ' + node['id'])
+
 def check(cat, layers, reg=REG, legacy=False):
     VALIDATOR = LEGACY_VALIDATOR if legacy else STRICT_VALIDATOR
     VALIDATOR.validate(cat)
@@ -40,6 +53,7 @@ def check(cat, layers, reg=REG, legacy=False):
         require(layer['id'] == entry['id'] and layer['id'] not in by, 'V-002 duplicate/mismatched layer')
         require(layer['project'] == cat['project'] and layer['id'].startswith('layer:' + cat['project'] + '.'), 'V-002 project')
         by[layer['id']] = layer
+        check_guide_status(layer, require)
         ids = set()
         for node in layer['nodes']:
             require(node['id'].startswith('comp:' + cat['project'] + '.') and node['id'] not in seen_nodes, 'V-002 node')
@@ -132,9 +146,9 @@ for depth in (2, 3):
 check(cat, layers)
 
 cases = {}
-def bad(name, mutate, c=cat, ls=layers):
+def bad(name, mutate, c=cat, ls=layers, reg=REG):
     cc, ll = deepcopy(c), deepcopy(ls); mutate(cc, ll)
-    try: check(cc, ll)
+    try: check(cc, ll, reg)
     except Exception as exc:
         # Every rejected fixture must genuinely fail, regardless of schema vs semantic stage.
         cases[name] = type(exc).__name__; return
@@ -169,20 +183,50 @@ bad('empty evidence', lambda c,l: l[0]['nodes'][0].update(sources=[]))
 bad('bidirectional queue', lambda c,l: l[0]['edges'].append({**deepcopy(l[0]['edges'][0]), 'id': 'aedge:customerproject.ingress.back', 'from': l[0]['edges'][0]['to'], 'to': l[0]['edges'][0]['from']}))
 bad('inference without rationale', lambda c,l: l[0]['sources'].append({'kind':'inferred','ref':'dsp-customerproject/README.md','confidence':'inferred'}))
 
+# Depth 4/5 fixtures on the REAL price forest (guide-mapped calculator layers, 2026-11-11).
+check(PCAT, PLAYERS, PREG)
+_PI = {l['id']: i for i, l in enumerate(PLAYERS)}
+def _pl(l, lid): return l[_PI['layer:price.' + lid]]
+def _pn(l, lid, nid): return next(n for n in _pl(l, lid)['nodes'] if n['id'] == 'comp:price.' + nid)
+def pbad(name, mutate): bad(name, mutate, PCAT, PLAYERS, PREG)
+pbad('d4 dangling opensLayerId', lambda c,l: _pn(l, 'api.get-prices.calculator', 'calc.context').update(opensLayerId='layer:price.api.get-prices.calculator.missing'))
+def _cyc(c, l):  # detach the d4 opener too, so the rejection comes from the V-004 cycle walk, not V-005
+    _pn(l, 'api.get-prices.calculator', 'calc.discount').pop('opensLayerId')
+    _pl(l, 'api.get-prices.calculator.discount').update(parentLayerId='layer:price.api.get-prices.calculator.discount.relations')
+pbad('d4/d5 parent cycle', _cyc)
+pbad('d5 orphan child (opener removed)', lambda c,l: _pn(l, 'api.get-prices.calculator.discount', 'calc-disc.relation').pop('opensLayerId'))
+pbad('d5 outside opener', lambda c,l: _pn(l, 'api.get-prices.calculator.discount', 'calc-disc.relation').update(boundary='outside'))
+pbad('d5 opener points at d4 sibling', lambda c,l: _pn(l, 'api.get-prices.calculator.discount', 'calc-disc.relation').update(opensLayerId='layer:price.api.get-prices.calculator.select'))
+pbad('d4 missing evidence status', lambda c,l: _pn(l, 'api.get-prices.calculator.context', 'calc-ctx.prms').update(responsibility='Walk OOTYPE.PRMS.'))
+pbad('d4 unknown evidence status', lambda c,l: _pn(l, 'api.get-prices.calculator.context', 'calc-ctx.prms').update(responsibility='Guide vs code: probably. Walk OOTYPE.PRMS.'))
+pbad('d4 conflicting without uncertainty', lambda c,l: _pn(l, 'api.get-prices.calculator.context', 'calc-ctx.gate').update(uncertainties=[]))
+pbad('d4 design-only without Confluence source', lambda c,l: _pn(l, 'api.get-prices.calculator.context', 'calc-ctx.prms').update(sources=[x for x in _pn(l, 'api.get-prices.calculator.context', 'calc-ctx.prms')['sources'] if x['kind'] != 'confluence']))
+pbad('d5 cross-layer edge endpoint', lambda c,l: _pl(l, 'api.get-prices.calculator.discount.relations')['edges'][0].update(to='comp:price.calc-disc.net'))
+
 # Validate existing registrations with their unchanged schema.
 rs = Draft202012Validator(json.loads((BASE / 'registration.schema.json').read_text()), format_checker=FormatChecker())
 for filename in ('customerproject.dev.json', 'price.dev.json'):
     rs.validate(json.loads((BASE / 'registrations' / filename).read_text()))
 # Reviewed citations and stored per-file revisions resolve without network access.
-count = 0
+count = 0; FALLBACK = 0
+# Repo copies: canonical /workspace/dsp/<ref>; if a whole repo copy has been moved away, an alternate local copy is
+# accepted ONLY when the stored sha256 still matches byte-for-byte (content-addressed evidence).
+ALT_ROOTS = [Path('/workspace/dsp-kesko')]
+def resolve(ref):
+    global FALLBACK
+    p = Path('/workspace/dsp') / ref
+    if p.is_file(): return p
+    for r in ALT_ROOTS:
+        if (r / ref).is_file(): FALLBACK += 1; return r / ref
+    return p
 for item in [x for L_ in LAYERS + PLAYERS for x in [L_, *L_['nodes'], *L_['edges']]]:
     for source in item['sources']:
         if source['kind'] in ('repo', 'registration'):
-            path = Path('/workspace/dsp') / source['ref']
+            path = resolve(source['ref'])
             assert path.is_file(), path
             assert source['revision'] == 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest(), path
         elif source['kind'] == 'confluence':
-            assert source['ref'].rsplit('/',1)[1] in {'22779513','22779013','22774292','22777574','22773861','22774388','22774149','22776628','22774078'}
+            assert source['ref'].rsplit('/',1)[1] in {'22779513','22779013','22774292','22777574','22773861','22774388','22774149','22776628','22774078','22774769','22776164'}
         count += 1
 print('MODE', 'LEGACY (CONTRACT-PENDING roots: ' + ', '.join(LEGACY_ROOTS) + ')' if LEGACY else 'STRICT')
 print('PASS schema (layer/catalog), unchanged customerproject+price registrations')
@@ -190,6 +234,10 @@ print('PASS real forests: customerproject', len(LAYERS), 'layers depth', forest_
 print('PASS V-008 no bidirectional boundary node in any layer')
 print('PASS', len(cases), 'negative fixtures:', ', '.join(cases))
 for f_ in FAILS: print(f_)
-print('PASS', count, 'citation occurrences: local file/hash checks + 9 actually opened Confluence page IDs (3 customerproject + 6 price)')
+print('PASS', count, 'citation occurrences: local file/hash checks + 11 actually opened Confluence page IDs (3 customerproject + 8 price)' + (' | ' + str(FALLBACK) + ' repo citations hash-matched in alternate copy ' + ', '.join(map(str, ALT_ROOTS)) + ' (canonical copy absent)' if FALLBACK else ''))
+_gl = [l for l in PLAYERS if l['id'].startswith(GUIDE_PREFIX)]
+_st = {}
+for n in (n for l in _gl for n in l['nodes']): k = GUIDE_STATUS.match(n['responsibility']).group(1); _st[k] = _st.get(k, 0) + 1
+print('PASS V-012 guide-mapped layers:', len(_gl), '| node evidence status', dict(sorted(_st.items())))
 if FAILS: raise SystemExit('STRICT RESULT: FAIL (' + str(len(FAILS)) + ' project(s) CONTRACT-PENDING)')
 print('STRICT RESULT: PASS (all projects)' if not LEGACY else 'LEGACY RESULT: PASS')

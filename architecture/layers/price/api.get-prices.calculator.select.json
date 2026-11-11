@@ -1,0 +1,383 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.api.get-prices.calculator.select",
+  "project": "price",
+  "title": "Strategy '2': per-list pricing and best price (guide fig. 2)",
+  "summary": "Drill-down of \"Best-price selection\": each matching price list priced on its own, best price, campaign/volume steps and result shaping. Mapped from field guide inputs/dsp-price-calculation.html (sha256:d260ad4216e3); every node is tagged confirmed / design-only / conflicting / code-only against code. Conceptual stages, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:price.api.get-prices.calculator",
+  "scope": "both",
+  "reviewedAt": "2026-11-11T13:00:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+      "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+      "confidence": "confirmed",
+      "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+      "note": "Lines 301-349: no list -> no price; order-total discount (limit <= 1); result = selected price + campaign/limit steps + order-total + future overrides; NetPriceUsed prices skip discounts.",
+      "confidence": "confirmed",
+      "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+      "revision": "version:21",
+      "confidence": "confirmed",
+      "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+      "revision": "version:14",
+      "confidence": "confirmed",
+      "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256.",
+    "The field guide is a secondary summary (draw.io figures were unreadable to its author); Confluence pages and code are the cited evidence.",
+    "Gross-price rule and direct-delivery variant are code-only and stay at the parent level (no guide content).",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.calc-sel.lists",
+      "label": "Price lists per position + gross",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. From the matrix stage; gross price from the tenant rule (no gross -> no price).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-sel.disc",
+      "label": "Discounts per position",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. From the discount stage; resolved once per item (per campaign when configured).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-sel.perlist",
+      "label": "Per price list pricing",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. Every matching price list with a price is priced on its own through the discount positions; lists without price values are skipped.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Guide draws this as a parallel region; code loops over the lists one after another (design-only aspect)."
+      ]
+    },
+    {
+      "id": "comp:price.calc-sel.best",
+      "label": "Best price",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. Standard price after discounts; the lowest net across all lists wins. Net-price-used rows skip discounts.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 301-349: no list -> no price; order-total discount (limit <= 1); result = selected price + campaign/limit steps + order-total + future overrides; NetPriceUsed prices skip discounts.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-sel.steps",
+      "label": "Campaign & volume steps",
+      "kind": "component",
+      "responsibility": "Guide vs code: conflicting. Campaign prices (CMNO on OPRICL, own discounts when configured) and line-discount limits become price steps; the cheapest per required quantity is kept.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22777574",
+          "revision": "version:6",
+          "confidence": "confirmed",
+          "note": "DSP Price Calculations: subscribe to M3 key tables and simulate prices outside M3 (OIS320MI cost/limits); campaign CMNO (OPRBAS/OPRICL) -> CSYTAB name/description."
+        }
+      ],
+      "uncertainties": [
+        "Guide: one scale limit from the ordered quantity/value picks the discount row; code has no quantity and instead emits every step (closer to the Confluence note that stepped prices should be attached for e-com).",
+        "Campaign name/description from CSYTAB is not read by the calculator (design-only).",
+        "Code TODO: whether volume discounts apply on top of staggered prices."
+      ]
+    },
+    {
+      "id": "comp:price.calc-sel.shape",
+      "label": "Shape result",
+      "kind": "component",
+      "responsibility": "Guide vs code: design-only. Design: DDSU decides per-line vs order-total presentation. Code: result = selected price + steps (RequiredQuantity) + one order-total discount (category 3, limit <= 1) + future overrides used.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 301-349: no list -> no price; order-total discount (limit <= 1); result = selected price + campaign/limit steps + order-total + future overrides; NetPriceUsed prices skip discounts.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/DiscountNumberChangedHandler.cs",
+          "note": "Lines 48-58: DDSU (DiscountPresentation), ALDP, DITP, DIBE, DIRE, SGGB, SGGC, SGGU ingested from OGDIPO.",
+          "confidence": "confirmed",
+          "revision": "sha256:45fc7c4149d8ee50a73ffe11d4fd7878007a7d6f585650553537637cca664438"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": [
+        "DDSU is ingested but not read; presentation split is by DiscountCategory, not DDSU.",
+        "Code TODO: multiple order-total discounts with limits."
+      ]
+    },
+    {
+      "id": "comp:price.calc-sel.out",
+      "label": "Retriever / API mapping",
+      "kind": "external",
+      "responsibility": "Guide vs code: confirmed. Calculated prices returned to the DSP retriever (layer:price.api.get-prices).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
+          "note": "Lines 41-49: \"calculator does not yet support customer agreements\" -> if HasAgreement, whole request goes to M3 retrieval; otherwise CalculatePrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
+        }
+      ],
+      "uncertainties": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.calc-sel.lists-in",
+      "from": "comp:price.calc-sel.lists",
+      "to": "comp:price.calc-sel.perlist",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "lists + gross",
+      "description": "Per position.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-sel.disc-in",
+      "from": "comp:price.calc-sel.disc",
+      "to": "comp:price.calc-sel.perlist",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "position values",
+      "description": "Same for each list.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-sel.pl-best",
+      "from": "comp:price.calc-sel.perlist",
+      "to": "comp:price.calc-sel.best",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "net per list",
+      "description": "Lowest wins.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-sel.pl-steps",
+      "from": "comp:price.calc-sel.perlist",
+      "to": "comp:price.calc-sel.steps",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "campaign/limit prices",
+      "description": "Per required quantity.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-sel.best-shape",
+      "from": "comp:price.calc-sel.best",
+      "to": "comp:price.calc-sel.shape",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "selected price",
+      "description": "Regular price.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 301-349: no list -> no price; order-total discount (limit <= 1); result = selected price + campaign/limit steps + order-total + future overrides; NetPriceUsed prices skip discounts.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-sel.steps-shape",
+      "from": "comp:price.calc-sel.steps",
+      "to": "comp:price.calc-sel.shape",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "price steps",
+      "description": "Cheapest per quantity.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 301-349: no list -> no price; order-total discount (limit <= 1); result = selected price + campaign/limit steps + order-total + future overrides; NetPriceUsed prices skip discounts.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-sel.shape-out",
+      "from": "comp:price.calc-sel.shape",
+      "to": "comp:price.calc-sel.out",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "PriceCalculationResult",
+      "description": "Per item.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 301-349: no list -> no price; order-total discount (limit <= 1); result = selected price + campaign/limit steps + order-total + future overrides; NetPriceUsed prices skip discounts.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
+          "note": "Lines 41-49: \"calculator does not yet support customer agreements\" -> if HasAgreement, whole request goes to M3 retrieval; otherwise CalculatePrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

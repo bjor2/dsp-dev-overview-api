@@ -1,0 +1,499 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.api.get-prices.calculator.matrix",
+  "project": "price",
+  "title": "Matrix lookup, item price and convert/round (guide fig. 3)",
+  "summary": "Drill-down of \"Price-list matrix role\": the shared control-template -> matrix-row lookup applied to price lists, then item price, unit conversion and rounding. Mapped from field guide inputs/dsp-price-calculation.html (sha256:d260ad4216e3); every node is tagged confirmed / design-only / conflicting / code-only against code. Conceptual stages, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:price.api.get-prices.calculator",
+  "scope": "both",
+  "reviewedAt": "2026-11-11T13:00:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListMatrixResolver.cs",
+      "note": "Line 28: control row = CROBJC copy with ProgramName OIS831 and StartValue1 = price-list table.",
+      "confidence": "confirmed",
+      "revision": "sha256:a02d22708c3a0fd382ca1cdfe1f4ab46305957f05580bee30f2db8121dbce03a"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/Extensions/ControlMatrixMappingExtensions.cs",
+      "note": "Lines 7-25: price-list templates PC01..PC91 -> priorities 1..10 (5 fields each); lines 27-45: discount templates PC11..PC91 -> 1..9, PC01 -> 10.",
+      "confidence": "confirmed",
+      "revision": "sha256:f5088f38a189fddff6f5608c5e69ab75136da7fa82e156c9b6971aa3dc6d6a77"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+      "note": "Lines 29-88: per priority: direct match, then chain levels 9->1 with wildcard variants; best QueryOrder then MostSpecificPriority, one list per priority.",
+      "confidence": "confirmed",
+      "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+      "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+      "confidence": "confirmed",
+      "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+      "revision": "version:21",
+      "confidence": "confirmed",
+      "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256.",
+    "The field guide is a secondary summary (draw.io figures were unreadable to its author); Confluence pages and code are the cited evidence.",
+    "The same lookup shape serves discounts (layer:price.api.get-prices.calculator.discount). Agreement lookup (OAGSET -> OAGRLN/OAGRPR) is design-only: no resolver in code.",
+    "Price-group lookup (CROBJC OIS366 -> OSLTPG) is not modelled in DSP code; not drawn.",
+    "Guide: older M3 versions may have only 3 template fields per priority; code assumes 5.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.calc-mx.in",
+      "label": "Resolved context",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. Price-list table, request values, customer (chains) and item master.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 59-122: tenant defaults (division/facility/currency/order type/warehouse), price-list table and discount model from customer, N-MONTER -> N-MONTERX, item masters, order-type defaults, control matrix, discount numbers; awaited one after another.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-mx.control",
+      "label": "Control templates (CROBJC)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. CROBJC row for program OIS831 and the price-list table gives 10 priorities of up to 5 template fields; CROBJC numbers them PC01..PC91 (starting at 0).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListMatrixResolver.cs",
+          "note": "Line 28: control row = CROBJC copy with ProgramName OIS831 and StartValue1 = price-list table.",
+          "confidence": "confirmed",
+          "revision": "sha256:a02d22708c3a0fd382ca1cdfe1f4ab46305957f05580bee30f2db8121dbce03a"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/Extensions/ControlMatrixMappingExtensions.cs",
+          "note": "Lines 7-25: price-list templates PC01..PC91 -> priorities 1..10 (5 fields each); lines 27-45: discount templates PC11..PC91 -> 1..9, PC01 -> 10.",
+          "confidence": "confirmed",
+          "revision": "sha256:f5088f38a189fddff6f5608c5e69ab75136da7fa82e156c9b6971aa3dc6d6a77"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-mx.values",
+      "label": "Template value resolution",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. Each template code (&ITNO, OBLTYP, OAORTP, &CUNO, &CHAIN, OKCUCL, MMBGRP ...) is filled from the request, customer or item.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/FieldResolvers/PriceListMatrixFieldResolver.cs",
+          "note": "Lines 12-57: template codes resolved from request (&WHLO, OAORTP, OBLTYP, OAAGNO), customer (&CUNO, &PYNO, &CHAIN, OKCUCL ...) and item (&ITNO, MMBGRP ...).",
+          "confidence": "confirmed",
+          "revision": "sha256:b64693eac4c5ea915e258b4675ab4e452d5b002f731d8426a8e993d5cc2e0001"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Only the codes in the resolver are supported; a new template field in M3 needs a code change (guide: \"Simplified on purpose\")."
+      ]
+    },
+    {
+      "id": "comp:price.calc-mx.search",
+      "label": "Matrix row search per priority (OPRMTX)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. For each configured priority: matrix rows tagged with that priority (PREX) must match the values; the first (most specific) match is kept, giving one price list per priority position. Code adds: direct match first, then customer chain levels 9 -> 1 with wildcard variants.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 29-88: per priority: direct match, then chain levels 9->1 with wildcard variants; best QueryOrder then MostSpecificPriority, one list per priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Chain-level and wildcard search are code behaviour not described in the guide."
+      ]
+    },
+    {
+      "id": "comp:price.calc-mx.price",
+      "label": "Item price per list (OPRICL)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. Base price for the item in each list, in its price unit: customer row, then chain row, then list row (same currency, valid on the date); latest ValidFrom per limit/campaign; split into the standard price and campaign/limit prices.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22777574",
+          "revision": "version:6",
+          "confidence": "confirmed",
+          "note": "DSP Price Calculations: subscribe to M3 key tables and simulate prices outside M3 (OIS320MI cost/limits); campaign CMNO (OPRBAS/OPRICL) -> CSYTAB name/description."
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-mx.convert",
+      "label": "Convert & round",
+      "kind": "component",
+      "responsibility": "Guide vs code: conflicting. Converts prices to the item sales price unit via MITAUN (AUTP 2; no factor -> price dropped) and rounds away from zero to the currency decimals.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/UnitConversionsResolver.cs",
+          "note": "Line 25: MITAUN alternative units with AUTP = 2 (price units) for the item.",
+          "confidence": "confirmed",
+          "revision": "sha256:bb4435c18c28090374362ccd2f1bbd4751a7c5737847d11e72d6d04f6802b1a5"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/Extensions/DecimalRoundingExtensions.cs",
+          "note": "Line 11: midpoint rounding away from zero (comment: matches observed OIS320MI behaviour).",
+          "confidence": "confirmed",
+          "revision": "sha256:5c6c5d17bb53f39e23bf01246c963b3f817090955a5c3c7dc0b05e5d0e10350c"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Model/OrderDefaults.cs",
+          "note": "Lines 52-65: currency decimals hard-coded (NOK/SEK/DKK/EUR = 2); comment: should read CSYTAB CUCD (TODO).",
+          "confidence": "confirmed",
+          "revision": "sha256:ea5b1773baa0bbcb3e1f89f8cf8b9ce9e40e47df4f871035e648e13f528d1b7f"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Guide: decimals and rounding from CSYPAR/CSYTAB; code hard-codes 2 decimals per currency (TODO read CSYTAB CUCD).",
+        "Guide: convert to customer currency; code filters price rows by currency instead of converting."
+      ]
+    },
+    {
+      "id": "comp:price.calc-mx.refdata",
+      "label": "Price DB (CROBJC, OPRMTX, OPRICL, MITAUN copies)",
+      "kind": "store",
+      "responsibility": "Guide vs code: confirmed. Control rows, price-list matrix, item prices, alternative units.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListMatrixResolver.cs",
+          "note": "Line 28: control row = CROBJC copy with ProgramName OIS831 and StartValue1 = price-list table.",
+          "confidence": "confirmed",
+          "revision": "sha256:a02d22708c3a0fd382ca1cdfe1f4ab46305957f05580bee30f2db8121dbce03a"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 29-88: per priority: direct match, then chain levels 9->1 with wildcard variants; best QueryOrder then MostSpecificPriority, one list per priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/UnitConversionsResolver.cs",
+          "note": "Line 25: MITAUN alternative units with AUTP = 2 (price units) for the item.",
+          "confidence": "confirmed",
+          "revision": "sha256:bb4435c18c28090374362ccd2f1bbd4751a7c5737847d11e72d6d04f6802b1a5"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-mx.out",
+      "label": "Price lists per position",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. To the gross-price and best-price stages of layer:price.api.get-prices.calculator.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.calc-mx.in",
+      "from": "comp:price.calc-mx.in",
+      "to": "comp:price.calc-mx.control",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "price-list table",
+      "description": "Selects the CROBJC row.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListMatrixResolver.cs",
+          "note": "Line 28: control row = CROBJC copy with ProgramName OIS831 and StartValue1 = price-list table.",
+          "confidence": "confirmed",
+          "revision": "sha256:a02d22708c3a0fd382ca1cdfe1f4ab46305957f05580bee30f2db8121dbce03a"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.ctl-val",
+      "from": "comp:price.calc-mx.control",
+      "to": "comp:price.calc-mx.values",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "10 x 5 template fields",
+      "description": "Codes to resolve.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/Extensions/ControlMatrixMappingExtensions.cs",
+          "note": "Lines 7-25: price-list templates PC01..PC91 -> priorities 1..10 (5 fields each); lines 27-45: discount templates PC11..PC91 -> 1..9, PC01 -> 10.",
+          "confidence": "confirmed",
+          "revision": "sha256:f5088f38a189fddff6f5608c5e69ab75136da7fa82e156c9b6971aa3dc6d6a77"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.val-search",
+      "from": "comp:price.calc-mx.values",
+      "to": "comp:price.calc-mx.search",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "values per priority",
+      "description": "Search keys.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/FieldResolvers/PriceListMatrixFieldResolver.cs",
+          "note": "Lines 12-57: template codes resolved from request (&WHLO, OAORTP, OBLTYP, OAAGNO), customer (&CUNO, &PYNO, &CHAIN, OKCUCL ...) and item (&ITNO, MMBGRP ...).",
+          "confidence": "confirmed",
+          "revision": "sha256:b64693eac4c5ea915e258b4675ab4e452d5b002f731d8426a8e993d5cc2e0001"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 29-88: per priority: direct match, then chain levels 9->1 with wildcard variants; best QueryOrder then MostSpecificPriority, one list per priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.search-price",
+      "from": "comp:price.calc-mx.search",
+      "to": "comp:price.calc-mx.price",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "one list per priority",
+      "description": "Price lists.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 29-88: per priority: direct match, then chain levels 9->1 with wildcard variants; best QueryOrder then MostSpecificPriority, one list per priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.price-conv",
+      "from": "comp:price.calc-mx.price",
+      "to": "comp:price.calc-mx.convert",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "price rows",
+      "description": "In list price unit.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.conv-out",
+      "from": "comp:price.calc-mx.convert",
+      "to": "comp:price.calc-mx.out",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "standard + campaign/limit prices",
+      "description": "Rounded.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.ctl-db",
+      "from": "comp:price.calc-mx.control",
+      "to": "comp:price.calc-mx.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "CROBJC",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListMatrixResolver.cs",
+          "note": "Line 28: control row = CROBJC copy with ProgramName OIS831 and StartValue1 = price-list table.",
+          "confidence": "confirmed",
+          "revision": "sha256:a02d22708c3a0fd382ca1cdfe1f4ab46305957f05580bee30f2db8121dbce03a"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.search-db",
+      "from": "comp:price.calc-mx.search",
+      "to": "comp:price.calc-mx.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "OPRMTX",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 29-88: per priority: direct match, then chain levels 9->1 with wildcard variants; best QueryOrder then MostSpecificPriority, one list per priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.price-db",
+      "from": "comp:price.calc-mx.price",
+      "to": "comp:price.calc-mx.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "OPRICL",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/PriceListTableResolver.cs",
+          "note": "Lines 114-168 and 181-206: OPRICL row by list + customer, then chain, then list only (same currency, valid date); latest ValidFrom per limit/campaign; unit conversion; rounding; standard (limit 0, no campaign) vs campaign/limit prices.",
+          "confidence": "confirmed",
+          "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-mx.conv-db",
+      "from": "comp:price.calc-mx.convert",
+      "to": "comp:price.calc-mx.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "MITAUN",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/UnitConversionsResolver.cs",
+          "note": "Line 25: MITAUN alternative units with AUTP = 2 (price units) for the item.",
+          "confidence": "confirmed",
+          "revision": "sha256:bb4435c18c28090374362ccd2f1bbd4751a7c5737847d11e72d6d04f6802b1a5"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

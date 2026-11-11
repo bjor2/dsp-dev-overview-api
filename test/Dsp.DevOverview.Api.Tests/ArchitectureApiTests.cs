@@ -198,8 +198,15 @@ public sealed class ArchitectureApiTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Equal(["layer:price.api", "layer:price.api.get-prices", "layer:price.api.get-prices.calculator"], Ids(calculator.GetProperty("breadcrumbs")));
         Assert.Equal("price.api.http", calculator.GetProperty("rootFlowRef").GetProperty("handlerId").GetString());
-        Assert.Equal(0, calculator.GetProperty("children").GetArrayLength());
+        Assert.Equal(4, calculator.GetProperty("children").GetArrayLength());
         AssertNoMachinePaths(rawCalc);
+        (status, var relations, var rawRel) = await Get(http, Layer("layer:price.api.get-prices.calculator.discount.relations", Price));
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal(["layer:price.api", "layer:price.api.get-prices", "layer:price.api.get-prices.calculator",
+            "layer:price.api.get-prices.calculator.discount", "layer:price.api.get-prices.calculator.discount.relations"], Ids(relations.GetProperty("breadcrumbs")));
+        Assert.Equal("price.api.http", relations.GetProperty("rootFlowRef").GetProperty("handlerId").GetString());
+        Assert.Equal(0, relations.GetProperty("children").GetArrayLength());
+        AssertNoMachinePaths(rawRel);
 
         (status, var batch, _) = await Get(http, Layer("layer:price.api-batch", Price));
         Assert.Equal(HttpStatusCode.OK, status);

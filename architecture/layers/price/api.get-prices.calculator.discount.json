@@ -1,0 +1,477 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.api.get-prices.calculator.discount",
+  "project": "price",
+  "title": "Discount positions loop (guide fig. 2, DIPO loop)",
+  "summary": "Drill-down of \"Discount role\": model selection, per-position matrix match, scale limit and value pick, then relation rules and the net result. Mapped from field guide inputs/dsp-price-calculation.html (sha256:d260ad4216e3); every node is tagged confirmed / design-only / conflicting / code-only against code. Conceptual stages, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:price.api.get-prices.calculator",
+  "scope": "both",
+  "reviewedAt": "2026-11-11T13:00:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountNumbersResolver.cs",
+      "note": "Lines 27-45: OGDIPO rows for the discount model (DISY) and currency; ALDP, DITP, DIBE, DIRE, SGGB/SGGC/SGGU copied; templates mapped to a 10-priority control matrix.",
+      "confidence": "confirmed",
+      "revision": "sha256:4915491c92938e76df902c30e0aafca295ca7b42b869cdac4d16647727b77727"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+      "note": "Lines 17-125: per DIPO and template priority: exact OGDMTX match (no wildcards), chain levels when &CHAIN is a template field, rows of the model date; ordered by priority.",
+      "confidence": "confirmed",
+      "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+      "note": "Lines 7-53: 8 positions; stop at the first missing DIPO; values with LimitValue <= limit, highest limit first then priority.",
+      "confidence": "confirmed",
+      "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+      "note": "Lines 222-247: net price rounded to currency decimals; order-total discounts (category 3) grouped by limit, first by priority.",
+      "confidence": "confirmed",
+      "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+      "revision": "version:14",
+      "confidence": "confirmed",
+      "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256.",
+    "The field guide is a secondary summary (draw.io figures were unreadable to its author); Confluence pages and code are the cited evidence.",
+    "Guide example model NOPROF01A with 7 positions is a Confluence example, not checked against data.",
+    "DDSU (per line vs order total presentation) is ingested but not read by the calculator; order-total handling uses DiscountCategory 3 instead.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.calc-disc.in",
+      "label": "Discount model + request context",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. Discount model (customer OCUSMA.DISY unless given), currency, customer, item, optional sales campaign.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 59-122: tenant defaults (division/facility/currency/order type/warehouse), price-list table and discount model from customer, N-MONTER -> N-MONTERX, item masters, order-type defaults, control matrix, discount numbers; awaited one after another.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-disc.model",
+      "label": "Discount model selection (OGDIPO)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. OGDIPO rows for the model and currency give up to 8 discount positions (DIPO), each with its rules and 10 template field sets (PC11..PC91, PC01 = priority 10). The model version used is the latest ValidFrom on or before the price date.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountNumbersResolver.cs",
+          "note": "Lines 27-45: OGDIPO rows for the discount model (DISY) and currency; ALDP, DITP, DIBE, DIRE, SGGB/SGGC/SGGU copied; templates mapped to a 10-priority control matrix.",
+          "confidence": "confirmed",
+          "revision": "sha256:4915491c92938e76df902c30e0aafca295ca7b42b869cdac4d16647727b77727"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountModelDatesResolver.cs",
+          "note": "Lines 15-62: discount model date = latest ValidFrom <= price date.",
+          "confidence": "confirmed",
+          "revision": "sha256:28d1987f59c44317844c954f429fe7820103b6ffa0300fc6d4197c19ba95fbaf"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/Extensions/ControlMatrixMappingExtensions.cs",
+          "note": "Lines 7-25: price-list templates PC01..PC91 -> priorities 1..10 (5 fields each); lines 27-45: discount templates PC11..PC91 -> 1..9, PC01 -> 10.",
+          "confidence": "confirmed",
+          "revision": "sha256:f5088f38a189fddff6f5608c5e69ab75136da7fa82e156c9b6971aa3dc6d6a77"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": [
+        "Guide: allocated discount number = position 4 holds agreement prices (Optimera/Flisekompaniet). Code reads ALDP but never uses it, and agreement discounts are not included (TODO) - conflicting."
+      ]
+    },
+    {
+      "id": "comp:price.calc-disc.match",
+      "label": "Matrix match per position (OGDMTX)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. For every position and template priority (PREX 1 -> 10) the OGDMTX rows of the model date must match the template values exactly; chain levels are tried when &CHAIN is a template field.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+          "note": "Lines 17-125: per DIPO and template priority: exact OGDMTX match (no wildcards), chain levels when &CHAIN is a template field, rows of the model date; ordered by priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/FieldResolvers/DiscountMatrixFieldResolver.cs",
+          "note": "Lines 1-153: discount template values from request, customer, item and optional sales campaign.",
+          "confidence": "confirmed",
+          "revision": "sha256:56b58ced7c34d66fbd76b93661e24375ba1f0c87da9d04206338a2148d6aea03"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": [
+        "Exact matches only, no wildcards (code note); the guide does not say whether M3 uses wildcards here."
+      ]
+    },
+    {
+      "id": "comp:price.calc-disc.limit",
+      "label": "Scale limit & value pick",
+      "kind": "component",
+      "responsibility": "Guide vs code: conflicting. Keeps candidate rows whose LIMT <= the limit being priced and picks the highest qualifying LIMT, then the lowest priority.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 7-53: 8 positions; stop at the first missing DIPO; values with LimitValue <= limit, highest limit first then priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": [
+        "Guide: scale limit from the ordered quantity (SGGB 22, in SGGU unit) or line value (SGGB 32), SGGC graduated/best. Code has no quantity: the regular price uses limit 0 and each LIMT > 0 becomes a volume step; code comment says only the SGGB 22/SGGC 2 equivalent without unit conversion is provided; SGGB 32 is absent.",
+        "Guide: priority 1 first, first matching row wins. Code orders by LIMT before priority, so a lower-priority row with a higher qualifying limit wins."
+      ]
+    },
+    {
+      "id": "comp:price.calc-disc.relation",
+      "label": "Relation, base and type rules (DIRE/DIBE/DITP)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. Walks the positions in order and applies each value according to its relation, base and type; detail in the next layer.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 55-141: DIRE 0 normal, 1 best vs previous (walks back over DIRE 1), 2 override previous line discounts if non-zero, 3 override + stop, 4 stop after if non-zero.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountNumber.cs",
+          "note": "Lines 1-105: DiscountCategory (1 line, 3 order total), DiscountType (1 %, 2 amount), DiscountBase (1,2,4,6,7), DiscountRelation (0-4) with M3 semantics in comments.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8d2a0c70c65270d5eb5532518d5f066abbe0c9aa56430bf2608b7c2c8cec375"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": [],
+      "opensLayerId": "layer:price.api.get-prices.calculator.discount.relations"
+    },
+    {
+      "id": "comp:price.calc-disc.net",
+      "label": "Net result & rounding",
+      "kind": "component",
+      "responsibility": "Guide vs code: conflicting. Net price after all positions, rounded to currency decimals; order-total positions are set aside for the result (category 3).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 222-247: net price rounded to currency decimals; order-total discounts (category 3) grouped by limit, first by priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Model/OrderDefaults.cs",
+          "note": "Lines 52-65: currency decimals hard-coded (NOK/SEK/DKK/EUR = 2); comment: should read CSYTAB CUCD (TODO).",
+          "confidence": "confirmed",
+          "revision": "sha256:ea5b1773baa0bbcb3e1f89f8cf8b9ce9e40e47df4f871035e648e13f528d1b7f"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": [
+        "Rounding decimals are hard-coded per currency, not read from CSYTAB (guide/Confluence)."
+      ]
+    },
+    {
+      "id": "comp:price.calc-disc.refdata",
+      "label": "Price DB (OGDIPO, OGDMTX copies)",
+      "kind": "store",
+      "responsibility": "Guide vs code: confirmed. Discount numbers, discount matrix, model dates.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountNumbersResolver.cs",
+          "note": "Lines 27-45: OGDIPO rows for the discount model (DISY) and currency; ALDP, DITP, DIBE, DIRE, SGGB/SGGC/SGGU copied; templates mapped to a 10-priority control matrix.",
+          "confidence": "confirmed",
+          "revision": "sha256:4915491c92938e76df902c30e0aafca295ca7b42b869cdac4d16647727b77727"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+          "note": "Lines 17-125: per DIPO and template priority: exact OGDMTX match (no wildcards), chain levels when &CHAIN is a template field, rows of the model date; ordered by priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/DiscountNumberChangedHandler.cs",
+          "note": "Lines 48-58: DDSU (DiscountPresentation), ALDP, DITP, DIBE, DIRE, SGGB, SGGC, SGGU ingested from OGDIPO.",
+          "confidence": "confirmed",
+          "revision": "sha256:45fc7c4149d8ee50a73ffe11d4fd7878007a7d6f585650553537637cca664438"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-disc.out",
+      "label": "Calculated discount per price list",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. To best-price selection (layer:price.api.get-prices.calculator.select).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.calc-disc.in",
+      "from": "comp:price.calc-disc.in",
+      "to": "comp:price.calc-disc.model",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "DISY + currency",
+      "description": "Selects positions.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountNumbersResolver.cs",
+          "note": "Lines 27-45: OGDIPO rows for the discount model (DISY) and currency; ALDP, DITP, DIBE, DIRE, SGGB/SGGC/SGGU copied; templates mapped to a 10-priority control matrix.",
+          "confidence": "confirmed",
+          "revision": "sha256:4915491c92938e76df902c30e0aafca295ca7b42b869cdac4d16647727b77727"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-disc.model-match",
+      "from": "comp:price.calc-disc.model",
+      "to": "comp:price.calc-disc.match",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "DIPO 1..8 + templates",
+      "description": "Per position.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+          "note": "Lines 17-125: per DIPO and template priority: exact OGDMTX match (no wildcards), chain levels when &CHAIN is a template field, rows of the model date; ordered by priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-disc.match-limit",
+      "from": "comp:price.calc-disc.match",
+      "to": "comp:price.calc-disc.limit",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "candidate rows",
+      "description": "Per priority.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+          "note": "Lines 17-125: per DIPO and template priority: exact OGDMTX match (no wildcards), chain levels when &CHAIN is a template field, rows of the model date; ordered by priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 7-53: 8 positions; stop at the first missing DIPO; values with LimitValue <= limit, highest limit first then priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-disc.limit-rel",
+      "from": "comp:price.calc-disc.limit",
+      "to": "comp:price.calc-disc.relation",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "one value per position",
+      "description": "Percent/amount.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 7-53: 8 positions; stop at the first missing DIPO; values with LimitValue <= limit, highest limit first then priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-disc.rel-net",
+      "from": "comp:price.calc-disc.relation",
+      "to": "comp:price.calc-disc.net",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "net after positions",
+      "description": "Per price list.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-disc.net-out",
+      "from": "comp:price.calc-disc.net",
+      "to": "comp:price.calc-disc.out",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "net price + position results",
+      "description": "Rounded.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 222-247: net price rounded to currency decimals; order-total discounts (category 3) grouped by limit, first by priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-disc.model-db",
+      "from": "comp:price.calc-disc.model",
+      "to": "comp:price.calc-disc.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "OGDIPO",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountNumbersResolver.cs",
+          "note": "Lines 27-45: OGDIPO rows for the discount model (DISY) and currency; ALDP, DITP, DIBE, DIRE, SGGB/SGGC/SGGU copied; templates mapped to a 10-priority control matrix.",
+          "confidence": "confirmed",
+          "revision": "sha256:4915491c92938e76df902c30e0aafca295ca7b42b869cdac4d16647727b77727"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountModelDatesResolver.cs",
+          "note": "Lines 15-62: discount model date = latest ValidFrom <= price date.",
+          "confidence": "confirmed",
+          "revision": "sha256:28d1987f59c44317844c954f429fe7820103b6ffa0300fc6d4197c19ba95fbaf"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-disc.match-db",
+      "from": "comp:price.calc-disc.match",
+      "to": "comp:price.calc-disc.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "OGDMTX",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/DiscountsResolver.cs",
+          "note": "Lines 17-125: per DIPO and template priority: exact OGDMTX match (no wildcards), chain levels when &CHAIN is a template field, rows of the model date; ordered by priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:543de77a4a29961227c55c7728f65704e0a3ebc5e166abad2e5b7d77c0cd55f0"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

@@ -109,7 +109,8 @@
       ],
       "uncertainties": [
         "Agreement selection and address validation are TODO in code (lines 52-57); agreements do not affect price-list choice today."
-      ]
+      ],
+      "opensLayerId": "layer:price.api.get-prices.calculator.context"
     },
     {
       "id": "comp:price.calc.matrix",
@@ -133,7 +134,8 @@
           "revision": "sha256:4a36d9c8187bf6a48fe99a0ded36e805fa2bdc1f480c4eb7eb97f7eea6df5319"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:price.api.get-prices.calculator.matrix"
     },
     {
       "id": "comp:price.calc.gross",
@@ -183,7 +185,8 @@
           "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:price.api.get-prices.calculator.discount"
     },
     {
       "id": "comp:price.calc.select",
@@ -207,7 +210,8 @@
           "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
         }
       ],
-      "uncertainties": []
+      "uncertainties": [],
+      "opensLayerId": "layer:price.api.get-prices.calculator.select"
     },
     {
       "id": "comp:price.calc.direct",
