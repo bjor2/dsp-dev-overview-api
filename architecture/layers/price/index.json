@@ -52,6 +52,26 @@
     {
       "id": "layer:price.fn.commands.work",
       "path": "fn.commands.work.json"
+    },
+    {
+      "id": "layer:price.api.get-prices.calculator.context",
+      "path": "api.get-prices.calculator.context.json"
+    },
+    {
+      "id": "layer:price.api.get-prices.calculator.matrix",
+      "path": "api.get-prices.calculator.matrix.json"
+    },
+    {
+      "id": "layer:price.api.get-prices.calculator.discount",
+      "path": "api.get-prices.calculator.discount.json"
+    },
+    {
+      "id": "layer:price.api.get-prices.calculator.discount.relations",
+      "path": "api.get-prices.calculator.discount.relations.json"
+    },
+    {
+      "id": "layer:price.api.get-prices.calculator.select",
+      "path": "api.get-prices.calculator.select.json"
     }
   ]
 }

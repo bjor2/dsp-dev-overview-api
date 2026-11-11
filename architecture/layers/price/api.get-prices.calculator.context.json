@@ -1,0 +1,511 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.api.get-prices.calculator.context",
+  "project": "price",
+  "title": "Calculator context & strategy gate (guide fig. 1)",
+  "summary": "Drill-down of \"Context resolution\": how a request reaches DSP calculation, what context is loaded, and how far the guide's PRMS strategy walk and agreement path are implemented. Mapped from field guide inputs/dsp-price-calculation.html (sha256:d260ad4216e3); every node is tagged confirmed / design-only / conflicting / code-only against code. Conceptual stages, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:price.api.get-prices.calculator",
+  "scope": "both",
+  "reviewedAt": "2026-11-11T13:00:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
+      "note": "Lines 41-49: \"calculator does not yet support customer agreements\" -> if HasAgreement, whole request goes to M3 retrieval; otherwise CalculatePrices.",
+      "confidence": "confirmed",
+      "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+      "note": "Lines 59-122: tenant defaults (division/facility/currency/order type/warehouse), price-list table and discount model from customer, N-MONTER -> N-MONTERX, item masters, order-type defaults, control matrix, discount numbers; awaited one after another.",
+      "confidence": "confirmed",
+      "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Integrations.Erp/ErpPriceClient.cs",
+      "note": "Lines 26-41: every OIS320MI GetCustomerPrice request sets PriceOriginSequence = \"2\".",
+      "confidence": "confirmed",
+      "revision": "sha256:14aac5c1ee566be7f6609ff55d5aad670521d6d254369381694ea737ff7a8c4e"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/CustomerOrderTypeChangedHandler.cs",
+      "note": "Line 123: OOTYPE.PRMS ingested as CustomerOrderType.PriceOriginSequence (no reader in Dahl.Price.Calculation).",
+      "confidence": "confirmed",
+      "revision": "sha256:f3677d94debcd7af3135339bb47e57aef9790dfefa9fcc750b333f4483085adc"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+      "revision": "version:21",
+      "confidence": "confirmed",
+      "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22777574",
+      "revision": "version:6",
+      "confidence": "confirmed",
+      "note": "DSP Price Calculations: subscribe to M3 key tables and simulate prices outside M3 (OIS320MI cost/limits); campaign CMNO (OPRBAS/OPRICL) -> CSYTAB name/description."
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774388",
+      "revision": "version:2",
+      "confidence": "confirmed",
+      "note": "Price service (2021): nightly ADF CSV -> blob -> function -> SQL; Web API via APIM, Okta. Historical; not proof of the current calculation path."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256.",
+    "The field guide is a secondary summary (draw.io figures were unreadable to its author); Confluence pages and code are the cited evidence.",
+    "Open per Confluence 22774769: which M3 version is modelled; cut-off for calling M3 instead; whether OIS320MI \"agreement first\" or M3 simulation \"best price incl. agreement\" is the target.",
+    "Data origin (nightly ADF CSV per 22774388 v2 vs PICO subscription per 22777574 v6) stays an unresolved conflict; see parent layers.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.calc-ctx.input",
+      "label": "Price request",
+      "kind": "external",
+      "responsibility": "Guide vs code: conflicting. Customer, optional address, items, order type, warehouse, date. The guide request carries qty and unit; the DSP input has neither.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/Input.cs",
+          "note": "Lines 5-30: request has customer/address/agreement id/items/warehouse/order type/line type/date/currency/model/table; no quantity and no requested unit.",
+          "confidence": "confirmed",
+          "revision": "sha256:32d72ff39662505fd3917ffc22536f7f001b7fe43ab2fb7b9371d286aaa193fe"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Guide: request = customer, item, qty, unit, order type. Code Input has no quantity or requested unit, so no scale limit can be derived from an ordered quantity (see layer:price.api.get-prices.calculator.discount)."
+      ]
+    },
+    {
+      "id": "comp:price.calc-ctx.gate",
+      "label": "Agreement gate (retriever)",
+      "kind": "external",
+      "responsibility": "Guide vs code: conflicting. Before the calculator: if the customer+address has an active agreement header (OAGRHE copy, status 20, valid on the price date) the whole request goes to M3 instead of DSP calculation.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
+          "note": "Lines 41-49: \"calculator does not yet support customer agreements\" -> if HasAgreement, whole request goes to M3 retrieval; otherwise CalculatePrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/PriceReaderStrategies/DahlFiDsp.cs",
+          "note": "Lines 36-42 and 98-110: same agreement gate for DahlFI; agreement customers get M3 prices (gross from OVHDAHL list).",
+          "confidence": "confirmed",
+          "revision": "sha256:245ae92f34263029fbbc085edf01cdfc1b10697b23dba8116b81ea80a02709da"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 188-195: HasAgreement needs an address id; delegates to CustomerAgreementResolver.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/CustomerAgreementResolver.cs",
+          "note": "Lines 13-37: active agreement = OAGRHE copy with customer + address, status 20, StartDate <= price date <= ValidTo (existence check only).",
+          "confidence": "confirmed",
+          "revision": "sha256:921b33d012c2e55de5e491594f6e003ab43d37691f763266c4cb036b6119f1e4"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Guide strategy 6: OAGRHE (first valid by valid-from) -> OAGSET template -> OAGRLN/OAGRPR price, first price stops the walk. Code only tests that an agreement header exists, in the retriever; OAGSET/OAGRLN/OAGRPR are ingested but never read by the calculator.",
+        "No address id -> no agreement check (HasAgreement returns false)."
+      ]
+    },
+    {
+      "id": "comp:price.calc-ctx.m3",
+      "label": "M3 OIS320MI (fallback)",
+      "kind": "external",
+      "responsibility": "Guide vs code: confirmed. ERP price API used for agreement customers (and by M3 strategies). Every request forces price origin sequence \"2\".",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Integrations.Erp/ErpPriceClient.cs",
+          "note": "Lines 26-41: every OIS320MI GetCustomerPrice request sets PriceOriginSequence = \"2\".",
+          "confidence": "confirmed",
+          "revision": "sha256:14aac5c1ee566be7f6609ff55d5aad670521d6d254369381694ea737ff7a8c4e"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Guide lists \"fall back to M3?\" as open; code already falls back, but only for agreement customers (conflict recorded on the gate).",
+        "Because PRMS is forced to \"2\", the M3 fallback for agreement customers also skips agreement prices (Confluence 22774769 NOTE2); whether agreement prices reach any caller today is unresolved."
+      ]
+    },
+    {
+      "id": "comp:price.calc-ctx.load",
+      "label": "Load context",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. Customer + chain (OCUSMA/OCHCUS copies), item masters (MITMAS), order-type defaults, price-list control row and discount numbers are loaded before any item is priced; no customer/items/item masters/control row -> no prices.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 38-57: customer must exist/be allowed/match tenant; agreement resolution and address validation are TODO (agreements do not change price-list choice).",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 59-122: tenant defaults (division/facility/currency/order type/warehouse), price-list table and discount model from customer, N-MONTER -> N-MONTERX, item masters, order-type defaults, control matrix, discount numbers; awaited one after another.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/OrderTypeDefaultsResolver.cs",
+          "note": "Lines 15-57: order-type defaults (contact method, warehouse, discount model) cached 60 min.",
+          "confidence": "confirmed",
+          "revision": "sha256:e1bf37dd6a7361a98ac34d80bd7a50bd6b5744779ee94449db6b855b38551e7d"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Guide: context tables load in parallel. Code awaits them one after another (design-only aspect).",
+        "CSYPAR (e.g. \"use best price\") is not read; best price is always used."
+      ]
+    },
+    {
+      "id": "comp:price.calc-ctx.defaults",
+      "label": "Defaults & table/model choice",
+      "kind": "component",
+      "responsibility": "Guide vs code: code-only. Fills division/facility/currency/order type/warehouse from tenant constants; price-list table and discount model from the customer; redirects N-MONTER to N-MONTERX (VAT workaround).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 59-122: tenant defaults (division/facility/currency/order type/warehouse), price-list table and discount model from customer, N-MONTER -> N-MONTERX, item masters, order-type defaults, control matrix, discount numbers; awaited one after another.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Model/OrderDefaults.cs",
+          "note": "Lines 52-65: currency decimals hard-coded (NOK/SEK/DKK/EUR = 2); comment: should read CSYTAB CUCD (TODO).",
+          "confidence": "confirmed",
+          "revision": "sha256:ea5b1773baa0bbcb3e1f89f8cf8b9ce9e40e47df4f871035e648e13f528d1b7f"
+        }
+      ],
+      "uncertainties": [
+        "Guide expects OODFLT/CSYPAR/CSYTAB to drive these values; code uses tenant constants in OrderDefaults."
+      ]
+    },
+    {
+      "id": "comp:price.calc-ctx.prms",
+      "label": "Price origin walk (PRMS)",
+      "kind": "component",
+      "responsibility": "Guide vs code: design-only. Design: walk OOTYPE.PRMS character by character (6 agreement, 2 price list, others), first strategy with a price wins. Code: PRMS is copied into the price DB but never read; the calculator always runs the price-list path.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/CustomerOrderTypeChangedHandler.cs",
+          "note": "Line 123: OOTYPE.PRMS ingested as CustomerOrderType.PriceOriginSequence (no reader in Dahl.Price.Calculation).",
+          "confidence": "confirmed",
+          "revision": "sha256:f3677d94debcd7af3135339bb47e57aef9790dfefa9fcc750b333f4483085adc"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": [
+        "Strategies C, 1, X, 9 (and M, G, W, S, R, E) are not modelled in DSP.",
+        "Order types 301/303/E02/E03/E08 = 6C21 and 302/E01 = 621 are Confluence observations, not checked against data."
+      ]
+    },
+    {
+      "id": "comp:price.calc-ctx.path2",
+      "label": "Strategy '2' path (sibling stages)",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. The only executed strategy: price-list matrix -> discounts -> best price (sibling nodes in layer:price.api.get-prices.calculator).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22774769",
+          "revision": "version:21",
+          "confidence": "confirmed",
+          "note": "M3 Price calculation analysis: PRMS strategies (301/303/E02/E03/E08 = 6C21; 302/E01 = 621; observed X 9 6 C 2 1), agreement strategy 6 (OAGRHE valid-from asc -> OAGSET -> OAGRLN/OAGRPR, first price stops), strategy 2 (CROBJC -> price lists, OGDIPO <= 8 positions, OGDMTX, best price), NOTE2 OIS320MI PRMS overridden to 2, control matrix 10 priorities (CROBJC PC01..PC91 from 0), convert/round via MITAUN/CSYPAR/CSYTAB, cut-off to M3 to be found."
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-ctx.refdata",
+      "label": "Price DB (M3 copies)",
+      "kind": "store",
+      "responsibility": "Guide vs code: confirmed. Customers/chains, item masters, order types incl. PRMS, order-type defaults, agreement heads/lines/prices (PICO import).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/CustomerAgreementResolver.cs",
+          "note": "Lines 13-37: active agreement = OAGRHE copy with customer + address, status 20, StartDate <= price date <= ValidTo (existence check only).",
+          "confidence": "confirmed",
+          "revision": "sha256:921b33d012c2e55de5e491594f6e003ab43d37691f763266c4cb036b6119f1e4"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/CustomerOrderTypeChangedHandler.cs",
+          "note": "Line 123: OOTYPE.PRMS ingested as CustomerOrderType.PriceOriginSequence (no reader in Dahl.Price.Calculation).",
+          "confidence": "confirmed",
+          "revision": "sha256:f3677d94debcd7af3135339bb47e57aef9790dfefa9fcc750b333f4483085adc"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/CustomerAgreementLineChangedHandler.cs",
+          "note": "Lines 16-28: OAGRLN ingested as a stored entity (not read by Dahl.Price.Calculation).",
+          "confidence": "confirmed",
+          "revision": "sha256:1342c8d28cfbac031ffbe7a9759363844888fc27fd048dd0e855106aa4cbdb35"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/CustomerAgreementPriceChangedHandler.cs",
+          "note": "Lines 16-28: OAGRPR ingested as a stored entity (not read by Dahl.Price.Calculation).",
+          "confidence": "confirmed",
+          "revision": "sha256:72ecbf9e12eb1c96d14738acbd9270bb5729c4d828f6625812e4557b1ae4131e"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/AgreementLineSetupChangedHandler.cs",
+          "note": "Lines 16-28: agreement line setup ingested as a stored entity (not read by Dahl.Price.Calculation).",
+          "confidence": "confirmed",
+          "revision": "sha256:2bd9b02d100dc6ed83e7414851af267edef63fbfacd173e3aa5ffc432551f29a"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/OrderTypeDefaultsResolver.cs",
+          "note": "Lines 15-57: order-type defaults (contact method, warehouse, discount model) cached 60 min.",
+          "confidence": "confirmed",
+          "revision": "sha256:e1bf37dd6a7361a98ac34d80bd7a50bd6b5744779ee94449db6b855b38551e7d"
+        }
+      ],
+      "uncertainties": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.calc-ctx.req",
+      "from": "comp:price.calc-ctx.input",
+      "to": "comp:price.calc-ctx.gate",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "customer, address, items",
+      "description": "From the DSP retriever.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
+          "note": "Lines 41-49: \"calculator does not yet support customer agreements\" -> if HasAgreement, whole request goes to M3 retrieval; otherwise CalculatePrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-ctx.no-agr",
+      "from": "comp:price.calc-ctx.gate",
+      "to": "comp:price.calc-ctx.load",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "no agreement: CalculatePrices",
+      "description": "DSP calculation.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
+          "note": "Lines 41-49: \"calculator does not yet support customer agreements\" -> if HasAgreement, whole request goes to M3 retrieval; otherwise CalculatePrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-ctx.agr",
+      "from": "comp:price.calc-ctx.gate",
+      "to": "comp:price.calc-ctx.m3",
+      "kind": "conceptual",
+      "relationship": "message",
+      "label": "agreement: OIS320MI (PRMS \"2\")",
+      "description": "Whole request to M3.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/GetPrices/DataRetrievers/DspCalculationPriceRetriever.cs",
+          "note": "Lines 41-49: \"calculator does not yet support customer agreements\" -> if HasAgreement, whole request goes to M3 retrieval; otherwise CalculatePrices.",
+          "confidence": "confirmed",
+          "revision": "sha256:47c94760a103efa25aaeb4acb8f9f8513c7c02de7fecef86351956d0cb0375b0"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Integrations.Erp/ErpPriceClient.cs",
+          "note": "Lines 26-41: every OIS320MI GetCustomerPrice request sets PriceOriginSequence = \"2\".",
+          "confidence": "confirmed",
+          "revision": "sha256:14aac5c1ee566be7f6609ff55d5aad670521d6d254369381694ea737ff7a8c4e"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-ctx.gate-db",
+      "from": "comp:price.calc-ctx.gate",
+      "to": "comp:price.calc-ctx.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Active OAGRHE?",
+      "description": "Existence check.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/CustomerAgreementResolver.cs",
+          "note": "Lines 13-37: active agreement = OAGRHE copy with customer + address, status 20, StartDate <= price date <= ValidTo (existence check only).",
+          "confidence": "confirmed",
+          "revision": "sha256:921b33d012c2e55de5e491594f6e003ab43d37691f763266c4cb036b6119f1e4"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-ctx.load-def",
+      "from": "comp:price.calc-ctx.load",
+      "to": "comp:price.calc-ctx.defaults",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "customer, item masters",
+      "description": "Context.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 59-122: tenant defaults (division/facility/currency/order type/warehouse), price-list table and discount model from customer, N-MONTER -> N-MONTERX, item masters, order-type defaults, control matrix, discount numbers; awaited one after another.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-ctx.def-prms",
+      "from": "comp:price.calc-ctx.defaults",
+      "to": "comp:price.calc-ctx.prms",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "order type",
+      "description": "Design-only walk.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Application/Features/Ingress/Pico/CustomerOrderTypeChangedHandler.cs",
+          "note": "Line 123: OOTYPE.PRMS ingested as CustomerOrderType.PriceOriginSequence (no reader in Dahl.Price.Calculation).",
+          "confidence": "confirmed",
+          "revision": "sha256:f3677d94debcd7af3135339bb47e57aef9790dfefa9fcc750b333f4483085adc"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-ctx.prms-2",
+      "from": "comp:price.calc-ctx.prms",
+      "to": "comp:price.calc-ctx.path2",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "always '2' today",
+      "description": "Single strategy executed.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 197-299: gross list (tenant rule); discounts resolved once; for each price list in turn: campaign/limit prices (per-campaign discounts when configured), line-discount LIMT values as volume steps (cheapest per required quantity kept), standard price -> lowest net wins.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-ctx.load-db",
+      "from": "comp:price.calc-ctx.load",
+      "to": "comp:price.calc-ctx.refdata",
+      "kind": "conceptual",
+      "relationship": "dependency",
+      "label": "Context tables",
+      "description": "Read.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/PriceCalculator.cs",
+          "note": "Lines 59-122: tenant defaults (division/facility/currency/order type/warehouse), price-list table and discount model from customer, N-MONTER -> N-MONTERX, item masters, order-type defaults, control matrix, discount numbers; awaited one after another.",
+          "confidence": "confirmed",
+          "revision": "sha256:4c811b0174685846381f110374c28d0e39d2ca697cef470fdad4e4f290fbc4ab"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/DataResolvers/OrderTypeDefaultsResolver.cs",
+          "note": "Lines 15-57: order-type defaults (contact method, warehouse, discount model) cached 60 min.",
+          "confidence": "confirmed",
+          "revision": "sha256:e1bf37dd6a7361a98ac34d80bd7a50bd6b5744779ee94449db6b855b38551e7d"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}

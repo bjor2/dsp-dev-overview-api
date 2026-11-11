@@ -1,0 +1,318 @@
+{
+  "$schema": "../../architecture-layer.schema.json",
+  "schemaVersion": 1,
+  "documentType": "architecture-layer",
+  "id": "layer:price.api.get-prices.calculator.discount.relations",
+  "project": "price",
+  "title": "Discount relation, base and type rules (DIRE/DIBE/DITP)",
+  "summary": "Drill-down of \"Relation, base and type rules\": the decision table applied per discount position. Mapped from field guide inputs/dsp-price-calculation.html (sha256:d260ad4216e3); every node is tagged confirmed / design-only / conflicting / code-only against code. Conceptual stages, decisions and data transformations only; not a call stack or observed runtime behaviour.",
+  "parentLayerId": "layer:price.api.get-prices.calculator.discount",
+  "scope": "both",
+  "reviewedAt": "2026-11-11T13:00:00+01:00",
+  "sources": [
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+      "note": "Lines 55-141: DIRE 0 normal, 1 best vs previous (walks back over DIRE 1), 2 override previous line discounts if non-zero, 3 override + stop, 4 stop after if non-zero.",
+      "confidence": "confirmed",
+      "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+      "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+      "confidence": "confirmed",
+      "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+    },
+    {
+      "kind": "repo",
+      "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountNumber.cs",
+      "note": "Lines 1-105: DiscountCategory (1 line, 3 order total), DiscountType (1 %, 2 amount), DiscountBase (1,2,4,6,7), DiscountRelation (0-4) with M3 semantics in comments.",
+      "confidence": "confirmed",
+      "revision": "sha256:a8d2a0c70c65270d5eb5532518d5f066abbe0c9aa56430bf2608b7c2c8cec375"
+    },
+    {
+      "kind": "confluence",
+      "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+      "revision": "version:14",
+      "confidence": "confirmed",
+      "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+    }
+  ],
+  "uncertainties": [
+    "dsp-price copy has no .git; evidence identified by per-file sha256.",
+    "The field guide is a secondary summary (draw.io figures were unreadable to its author); Confluence pages and code are the cited evidence.",
+    "M3 field reference pages (DITP/DIBE/DIRE) under 22776164 were not opened this run; semantics taken from 22776164 v14 and code enum comments.",
+    "New nested layer id: auto-layout on first open; no dsp-arch-pos carryover; existing parent ids/positions unchanged."
+  ],
+  "nodes": [
+    {
+      "id": "comp:price.calc-dire.in",
+      "label": "One value per position",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. DIPO 1..8 with percent/amount and rules (DITP, DIBE, DIRE).",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 7-53: 8 positions; stop at the first missing DIPO; values with LimitValue <= limit, highest limit first then priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountNumber.cs",
+          "note": "Lines 1-105: DiscountCategory (1 line, 3 order total), DiscountType (1 %, 2 amount), DiscountBase (1,2,4,6,7), DiscountRelation (0-4) with M3 semantics in comments.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8d2a0c70c65270d5eb5532518d5f066abbe0c9aa56430bf2608b7c2c8cec375"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-dire.walk",
+      "label": "Position walk & stop",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. Positions in DIPO order; the first missing DIPO ends the loop; empty positions are skipped; after a stop rule fires, later positions are ignored; order-total positions are skipped here.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 7-53: 8 positions; stop at the first missing DIPO; values with LimitValue <= limit, highest limit first then priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 55-141: DIRE 0 normal, 1 best vs previous (walks back over DIRE 1), 2 override previous line discounts if non-zero, 3 override + stop, 4 stop after if non-zero.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-dire.dire",
+      "label": "Relation (DIRE)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. 0 normal (a later one may reset it); 1 best of this and the previous (walking back over earlier DIRE 1); 2 overrides previous line discounts if non-zero; 3 overrides then stops if non-zero; 4 stops after this one if non-zero.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 55-141: DIRE 0 normal, 1 best vs previous (walks back over DIRE 1), 2 override previous line discounts if non-zero, 3 override + stop, 4 stop after if non-zero.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountNumber.cs",
+          "note": "Lines 1-105: DiscountCategory (1 line, 3 order total), DiscountType (1 %, 2 amount), DiscountBase (1,2,4,6,7), DiscountRelation (0-4) with M3 semantics in comments.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8d2a0c70c65270d5eb5532518d5f066abbe0c9aa56430bf2608b7c2c8cec375"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "comp:price.calc-dire.base",
+      "label": "Base (DIBE)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. 4 line amount; 6 same base as previous; 7 net after previous discount (only when the previous one produced a net).",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountNumber.cs",
+          "note": "Lines 1-105: DiscountCategory (1 line, 3 order total), DiscountType (1 %, 2 amount), DiscountBase (1,2,4,6,7), DiscountRelation (0-4) with M3 semantics in comments.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8d2a0c70c65270d5eb5532518d5f066abbe0c9aa56430bf2608b7c2c8cec375"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": [
+        "DIBE 1/2 (order gross/net) are skipped in line pricing - code-only detail.",
+        "BaseDiscountNumber handling is commented out in code."
+      ]
+    },
+    {
+      "id": "comp:price.calc-dire.apply",
+      "label": "Apply type (DITP)",
+      "kind": "component",
+      "responsibility": "Guide vs code: confirmed. Amount discounts subtract from the base; percent discounts take a share of it. Internal discounts are skipped.",
+      "boundary": "inside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        },
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountNumber.cs",
+          "note": "Lines 1-105: DiscountCategory (1 line, 3 order total), DiscountType (1 %, 2 amount), DiscountBase (1,2,4,6,7), DiscountRelation (0-4) with M3 semantics in comments.",
+          "confidence": "confirmed",
+          "revision": "sha256:a8d2a0c70c65270d5eb5532518d5f066abbe0c9aa56430bf2608b7c2c8cec375"
+        },
+        {
+          "kind": "confluence",
+          "ref": "https://dahl-it.atlassian.net/wiki/spaces/DSPDOC/pages/22776164",
+          "revision": "version:14",
+          "confidence": "confirmed",
+          "note": "Price Discount Calculation: OGDIPO by OCUSMA.DISY (<= 8 DIPO), allocated discount number (Optimera/Flisekompaniet position 4 for agreement prices), OGDMTX 10 template field sets (PC11..PC91, PC01 = 10) with PREX, LIMT <= requested quantity, SGGB 22/32 + SGGC + SGGU scale limit, DITP/DIBE/DIRE calculation, DDSU presentation (per line vs order total)."
+        }
+      ],
+      "uncertainties": [
+        "Guide: all configured discounts are percentages today (configuration claim; code handles both).",
+        "Agreement, KIT and promotional discounts are not included (code TODO)."
+      ]
+    },
+    {
+      "id": "comp:price.calc-dire.out",
+      "label": "Net price + position results",
+      "kind": "contract",
+      "responsibility": "Guide vs code: confirmed. Back to the discount loop for rounding.",
+      "boundary": "outside",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 222-247: net price rounded to currency decimals; order-total discounts (category 3) grouped by limit, first by priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "aedge:price.calc-dire.in",
+      "from": "comp:price.calc-dire.in",
+      "to": "comp:price.calc-dire.walk",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "positions",
+      "description": "In DIPO order.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 7-53: 8 positions; stop at the first missing DIPO; values with LimitValue <= limit, highest limit first then priority.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-dire.walk-dire",
+      "from": "comp:price.calc-dire.walk",
+      "to": "comp:price.calc-dire.dire",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "value",
+      "description": "Relation first.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 55-141: DIRE 0 normal, 1 best vs previous (walks back over DIRE 1), 2 override previous line discounts if non-zero, 3 override + stop, 4 stop after if non-zero.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-dire.dire-base",
+      "from": "comp:price.calc-dire.dire",
+      "to": "comp:price.calc-dire.base",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "kept values",
+      "description": "After resets.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-dire.base-apply",
+      "from": "comp:price.calc-dire.base",
+      "to": "comp:price.calc-dire.apply",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "base amount",
+      "description": "Per position.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    },
+    {
+      "id": "aedge:price.calc-dire.apply-out",
+      "from": "comp:price.calc-dire.apply",
+      "to": "comp:price.calc-dire.out",
+      "kind": "conceptual",
+      "relationship": "data",
+      "label": "net",
+      "description": "Last net wins.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "dsp-price/src/Dahl.Price.Calculation/ReadModel/DiscountCalculator.cs",
+          "note": "Lines 143-220: internal discounts skipped; agreement/KIT/promotional not included (TODO); DIBE 1/2 (order) skipped, 4 line amount, 6 same base, 7 net after previous; amount before percent; comment: only SGGB 22/SGGC 2 equivalent, no unit conversion.",
+          "confidence": "confirmed",
+          "revision": "sha256:378bcba5e9687e1b8329b004c9d80822ca16ccc219b81db50df6c470ecb9fa88"
+        }
+      ],
+      "uncertainties": []
+    }
+  ]
+}
